@@ -9,6 +9,12 @@ pipeline {
             }
         }
 
+        stage('Test') {
+            steps {
+                bat 'npm test'
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
                 bat 'docker build -t deployflow:%BUILD_NUMBER% .'

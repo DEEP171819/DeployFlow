@@ -4,8 +4,6 @@ const app = express();
 
 app.use(express.static("public"));
 
-const PORT = 3000;
-
 app.get("/api/health", (req, res) => {
     res.json({
         status: "UP",
@@ -13,6 +11,12 @@ app.get("/api/health", (req, res) => {
     });
 });
 
-app.listen(PORT, () => {
-    console.log(`DeployFlow server running on http://localhost:${PORT}`);
-});
+module.exports = app;
+
+const PORT = 3000;
+
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log(`DeployFlow server running on http://localhost:${PORT}`);
+    });
+}
