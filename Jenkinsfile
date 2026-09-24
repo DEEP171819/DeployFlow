@@ -54,11 +54,21 @@ pipeline {
 }
 
         stage('Health Check') {
-            steps {
-                bat 'kubectl get pods'
-                bat 'kubectl get deployment deployflow'
-                bat 'kubectl get service deployflow-service'
-            }
-        }
+    steps {
+        bat 'kubectl get pods -l app=deployflow'
+        bat 'kubectl get deployment deployflow'
+        bat 'kubectl get service deployflow-service'
+        bat 'kubectl get hpa deployflow'
+        bat 'kubectl rollout status deployment/deployflow --timeout=120s'
+    }
+}
+
+        stage('Deployment Verification') {
+    steps {
+        bat 'kubectl get pods -l app=deployflow -o wide'
+        bat 'kubectl get hpa deployflow'
+        bat 'kubectl top pods -l app=deployflow'
+    }
+}
     }
 }
