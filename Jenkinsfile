@@ -42,9 +42,11 @@ pipeline {
 }
 
         stage('Health Check') {
-            steps {
-                bat 'curl http://localhost:3000/api/health'
-            }
-        }
+    steps {
+        bat 'kubectl get pods'
+        bat 'kubectl get deployment deployflow'
+        bat 'kubectl get service deployflow-service'
+    }
+}
     }
 }
