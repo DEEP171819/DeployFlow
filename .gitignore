@@ -1,3 +1,4 @@
 node_modules/
 .env
 *.log
+k8s/deployment-rendered.yaml

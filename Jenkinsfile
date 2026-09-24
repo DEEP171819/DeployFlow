@@ -34,26 +34,26 @@ pipeline {
             }
         }
 
-    stage('Prepare Kubernetes Manifest') {
-    steps {
-        bat 'powershell -Command "(Get-Content k8s\\deployment.yaml) -replace ''IMAGE_TAG'', ''%BUILD_NUMBER%'' | Set-Content k8s\\deployment-rendered.yaml"'
-    }
-}
+        stage('Prepare Kubernetes Manifest') {
+            steps {
+                powershell '.\\scripts\\prepare-k8s.ps1'
+            }
+        }
 
-stage('Deploy to Kubernetes') {
-    steps {
-        bat 'kubectl apply -f k8s\\deployment-rendered.yaml'
-        bat 'kubectl apply -f k8s\\service.yaml'
-        bat 'kubectl rollout status deployment/deployflow'
-    }
-}
+        stage('Deploy to Kubernetes') {
+            steps {
+                bat 'kubectl apply -f k8s\\deployment-rendered.yaml'
+                bat 'kubectl apply -f k8s\\service.yaml'
+                bat 'kubectl rollout status deployment/deployflow'
+            }
+        }
 
         stage('Health Check') {
-    steps {
-        bat 'kubectl get pods'
-        bat 'kubectl get deployment deployflow'
-        bat 'kubectl get service deployflow-service'
-    }
-}
+            steps {
+                bat 'kubectl get pods'
+                bat 'kubectl get deployment deployflow'
+                bat 'kubectl get service deployflow-service'
+            }
+        }
     }
 }
