@@ -34,9 +34,16 @@ pipeline {
             }
         }
 
-    stage('Deploy to Kubernetes') {
+    stage('Prepare Kubernetes Manifest') {
     steps {
-        bat 'kubectl set image deployment/deployflow deployflow=deepak97813/deployflow:%BUILD_NUMBER%'
+        bat 'powershell -Command "(Get-Content k8s\\deployment.yaml) -replace ''IMAGE_TAG'', ''%BUILD_NUMBER%'' | Set-Content k8s\\deployment-rendered.yaml"'
+    }
+}
+
+stage('Deploy to Kubernetes') {
+    steps {
+        bat 'kubectl apply -f k8s\\deployment-rendered.yaml'
+        bat 'kubectl apply -f k8s\\service.yaml'
         bat 'kubectl rollout status deployment/deployflow'
     }
 }
