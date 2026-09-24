@@ -80,5 +80,38 @@ pipeline {
         bat 'kubectl top pods -l app=deployflow'
     }
 }
+
+stage('Deployment Summary') {
+    steps {
+        script {
+            def image = bat(
+                script: 'kubectl get deployment deployflow -o=jsonpath="{.spec.template.spec.containers[0].image}"',
+                returnStdout: true
+            ).trim()
+
+            def replicas = bat(
+                script: 'kubectl get deployment deployflow -o=jsonpath="{.status.readyReplicas}/{.status.replicas}"',
+                returnStdout: true
+            ).trim()
+
+            def hpa = bat(
+                script: 'kubectl get hpa deployflow -o=jsonpath="{.status.currentReplicas}/{.spec.maxReplicas}"',
+                returnStdout: true
+            ).trim()
+
+            echo """
+==============================
+ DeployFlow Deployment Summary
+==============================
+Build:       #${BUILD_NUMBER}
+Docker Image: ${image}
+Ready Pods:  ${replicas}
+HPA Replicas: ${hpa}
+Deployment:  SUCCESSFUL
+==============================
+"""
+        }
+    }
+}
     }
 }
