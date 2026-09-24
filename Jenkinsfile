@@ -34,13 +34,12 @@ pipeline {
             }
         }
 
-        stage('Run Application') {
-            steps {
-                bat 'docker stop deployflow-app || exit 0'
-                bat 'docker rm deployflow-app || exit 0'
-                bat 'docker run -d --name deployflow-app -p 3000:3000 deepak97813/deployflow:%BUILD_NUMBER%'
-            }
-        }
+    stage('Deploy to Kubernetes') {
+    steps {
+        bat 'kubectl set image deployment/deployflow deployflow=deepak97813/deployflow:%BUILD_NUMBER%'
+        bat 'kubectl rollout status deployment/deployflow'
+    }
+}
 
         stage('Health Check') {
             steps {
