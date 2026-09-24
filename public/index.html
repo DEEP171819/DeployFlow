@@ -28,18 +28,49 @@
 
         <div class="card">
             <h3>Build Status</h3>
-            <p class="status">SUCCESS</p>
+            <p class="status" id="build-status">SUCCESS</p>
         </div>
 
         <div class="card">
             <h3>Deployment Status</h3>
-            <p class="status">DEPLOYED</p>
+            <p class="status" id="deployment-status">Checking...</p>
         </div>
 
         <div class="card">
             <h3>Version</h3>
-            <p class="status">v1.0.0</p>
+            <p class="status" id="version">Loading...</p>
         </div>
+
+    </div>
+
+    <div class="cards">
+
+        <div class="card">
+            <h3>Replicas</h3>
+            <p class="status" id="replicas">Loading...</p>
+        </div>
+
+        <div class="card">
+    <h3>Build Status</h3>
+    <p class="status" id="build-status">Loading...</p>
+    <p id="build-number">Build #--</p>
+    <p id="build-duration">Duration: --</p>
+</div>
+
+        <div class="card">
+            <h3>Docker Image</h3>
+            <p class="status" id="image">Loading...</p>
+        </div>
+
+    </div>
+
+    <div class="card activity">
+
+        <h2>Pods</h2>
+
+        <ul id="pod-list">
+            <li>Loading...</li>
+        </ul>
 
     </div>
 
@@ -47,11 +78,9 @@
 
         <h2>Recent Activity</h2>
 
-        <ul>
-            <li>Application started successfully</li>
-            <li>Health check completed</li>
-            <li>Build #1 completed</li>
-            <li>Deployment v1.0.0 auto completed</li>
+        <ul id="activity-list">
+            <li>Dashboard initialized</li>
+            <li>Waiting for deployment information...</li>
         </ul>
 
     </div>
