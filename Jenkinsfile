@@ -43,6 +43,7 @@ pipeline {
         stage('Deploy to Kubernetes') {
     steps {
         bat 'kubectl apply -f k8s\\configmap.yaml'
+        bat 'kubectl apply -f k8s\\secret.yaml'
         bat 'kubectl apply -f k8s\\deployment-rendered.yaml'
         bat 'kubectl apply -f k8s\\service.yaml'
         bat 'kubectl rollout status deployment/deployflow'
