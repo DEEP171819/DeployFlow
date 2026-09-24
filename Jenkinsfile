@@ -15,24 +15,25 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
-            steps {
-                bat 'docker build -t deepak97813/deployflow:%BUILD_NUMBER% .'
-            }
+       stage('Build Docker Image') {
+        steps {
+            bat 'docker build -t deepak97813/deployflow:%BUILD_NUMBER% .'
         }
+    }
 
         stage('Push Docker Image') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-credentials',
-                    usernameVariable: 'DOCKER_USERNAME',
-                    passwordVariable: 'DOCKER_PASSWORD'
-                )]) {
-                    bat 'docker login -u %DOCKER_USERNAME% -p %DOCKER_PASSWORD%'
-                    bat 'docker push deepak97813/deployflow:%BUILD_NUMBER%'
-                }
-            }
+    steps {
+        withCredentials([usernamePassword(
+            credentialsId: 'dockerhub-credentials',
+            usernameVariable: 'DOCKER_USERNAME',
+            passwordVariable: 'DOCKER_PASSWORD'
+        )]) {
+            bat 'docker login -u %DOCKER_USERNAME% -p %DOCKER_PASSWORD%'
+            bat 'docker push deepak97813/deployflow:%BUILD_NUMBER%'
+            bat 'docker push deepak97813/deployflow:latest'
         }
+    }
+}
 
         stage('Prepare Kubernetes Manifest') {
             steps {
