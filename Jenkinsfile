@@ -49,7 +49,17 @@ pipeline {
         bat 'kubectl annotate deployment/deployflow kubernetes.io/change-cause="Jenkins Build %BUILD_NUMBER%" --overwrite'
         bat 'kubectl apply -f k8s\\service.yaml'
         bat 'kubectl apply -f k8s\\hpa.yaml'
-        bat 'kubectl rollout status deployment/deployflow'
+
+        script {
+            try {
+                bat 'kubectl rollout status deployment/deployflow --timeout=120s'
+            } catch (Exception e) {
+                echo 'Deployment failed. Rolling back to the previous revision...'
+                bat 'kubectl rollout undo deployment/deployflow'
+                bat 'kubectl rollout status deployment/deployflow --timeout=120s'
+                throw e
+            }
+        }
     }
 }
 
