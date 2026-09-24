@@ -16,10 +16,10 @@ pipeline {
         }
 
        stage('Build Docker Image') {
-        steps {
-            bat 'docker build -t deepak97813/deployflow:%BUILD_NUMBER% .'
-        }
+    steps {
+        bat 'docker build -t deepak97813/deployflow:%BUILD_NUMBER% -t deepak97813/deployflow:latest .'
     }
+}
 
         stage('Push Docker Image') {
     steps {
