@@ -1,6 +1,5 @@
 const express = require("express");
 const morgan = require("morgan");
-const k8s = require("@kubernetes/client-node");
 
 const app = express();
 
@@ -19,15 +18,14 @@ app.get("/api/health", (req, res) => {
     });
 });
 
-const kc = new k8s.KubeConfig();
-kc.loadFromDefault();
-
-const appsApi = kc.makeApiClient(k8s.AppsV1Api);
-const coreApi = kc.makeApiClient(k8s.CoreV1Api);
-const autoscalingApi = kc.makeApiClient(k8s.AutoscalingV2Api);
-
 app.get("/api/deployment/status", async (req, res) => {
     try {
+        const {
+            appsApi,
+            coreApi,
+            autoscalingApi
+        } = require("./kubernetes");
+
         const namespace = "default";
 
         const deployment = await appsApi.readNamespacedDeployment({
