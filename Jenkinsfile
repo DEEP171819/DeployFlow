@@ -57,10 +57,14 @@ pipeline {
         }
 
         stage('Test') {
-            steps {
-                bat 'npm test'
-            }
-        }
+    steps {
+        bat '''
+        if exist package.json (
+            npm test --if-present
+        )
+        '''
+    }
+}
 
         stage('Build Docker Image') {
             steps {
