@@ -1,7 +1,6 @@
 pipeline {
 agent any
 
-```
 parameters {
     string(
         name: 'REPOSITORY',
@@ -199,31 +198,12 @@ stages {
                 )
 
                 echo """
-```
-
-==============================
-DeployFlow Project Analysis
-===========================
-
-Project Type:        ${env.PROJECT_TYPE}
-Framework:           ${env.FRAMEWORK}
-Package Manager:     ${env.PACKAGE_MANAGER}
-Build Command:       ${env.BUILD_COMMAND}
-Start Command:       ${env.START_COMMAND}
-Port:                ${env.PORT}
-Health Path:         ${env.HEALTH_PATH}
-Static Application:  ${env.IS_STATIC}
-Output Directory:    ${env.OUTPUT_DIRECTORY}
-Existing Dockerfile: ${env.EXISTING_DOCKERFILE}
-Service Path:        ${servicePath ?: '(repository root)'}
-==========================================================
 
 """
 }
 }
 }
 
-```
     stage('Install Dependencies') {
         steps {
             script {
@@ -402,7 +382,6 @@ Service Path:        ${servicePath ?: '(repository root)'}
                     if (env.IS_STATIC == 'true') {
 
                         def dockerfile = """
-```
 
 FROM node:22-alpine AS build
 
@@ -416,7 +395,7 @@ COPY . .
 
 RUN ${env.BUILD_COMMAND}
 
-FROM nginx:alpine
+FROM nginx
 
 COPY --from=build /app/${env.OUTPUT_DIRECTORY} /usr/share/nginx/html
 
@@ -425,7 +404,6 @@ EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 """
 
-```
                         writeFile(
                             file:
                                 "${serviceDir}/Dockerfile",
@@ -446,7 +424,6 @@ CMD ["nginx", "-g", "daemon off;"]
                             }.join(", ")
 
                         def dockerfile = """
-```
 
 FROM node:22-alpine
 
@@ -465,7 +442,6 @@ EXPOSE ${env.PORT}
 CMD [${dockerCommand}]
 """
 
-```
                         writeFile(
                             file:
                                 "${serviceDir}/Dockerfile",
@@ -488,7 +464,6 @@ CMD [${dockerCommand}]
                             .replace('"', '\\"')
 
                     def dockerfile = """
-```
 
 FROM python:3.12-slim
 
@@ -505,7 +480,6 @@ EXPOSE ${env.PORT}
 CMD ["sh", "-c", "${escapedStartCommand}"]
 """
 
-```
                     writeFile(
                         file:
                             "${serviceDir}/Dockerfile",
@@ -520,7 +494,6 @@ CMD ["sh", "-c", "${escapedStartCommand}"]
                     if (env.PACKAGE_MANAGER == 'maven') {
 
                         def dockerfile = """
-```
 
 FROM maven:3.9-eclipse-temurin-21 AS build
 
@@ -543,7 +516,6 @@ EXPOSE ${env.PORT}
 ENTRYPOINT ["java", "-jar", "app.jar"]
 """
 
-```
                         writeFile(
                             file:
                                 "${serviceDir}/Dockerfile",
@@ -554,7 +526,6 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
                     } else {
 
                         def dockerfile = """
-```
 
 FROM gradle:8-jdk21 AS build
 
@@ -575,7 +546,6 @@ EXPOSE ${env.PORT}
 ENTRYPOINT ["java", "-jar", "app.jar"]
 """
 
-```
                         writeFile(
                             file:
                                 "${serviceDir}/Dockerfile",
@@ -589,7 +559,6 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
                 } else if (env.PROJECT_TYPE == 'go') {
 
                     def dockerfile = """
-```
 
 FROM golang:1.24-alpine AS build
 
@@ -599,7 +568,7 @@ COPY . .
 
 RUN go build -o app .
 
-FROM alpine:latest
+FROM alpine
 
 WORKDIR /app
 
@@ -610,7 +579,6 @@ EXPOSE ${env.PORT}
 CMD ["./app"]
 """
 
-```
                     writeFile(
                         file:
                             "${serviceDir}/Dockerfile",
@@ -795,24 +763,6 @@ CMD ["./app"]
                 ).trim()
 
                 echo """
-```
-
-==============================
-DeployFlow Deployment Summary
-=============================
-
-Build:              #${BUILD_NUMBER}
-Project Type:       ${env.PROJECT_TYPE}
-Framework:          ${env.FRAMEWORK}
-Service Path:       ${params.SERVICE_PATH ?: '(repository root)'}
-Port:               ${env.PORT}
-Health Path:        ${env.HEALTH_PATH}
-Static Application: ${env.IS_STATIC}
-Docker Image:       ${image}
-Ready Pods:         ${replicas}
-HPA Replicas:       ${hpa}
-Deployment:         SUCCESSFUL
-==============================
 
 """
 }
