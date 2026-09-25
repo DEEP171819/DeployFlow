@@ -15,3 +15,10 @@ $serviceRendered = $serviceTemplate `
     -replace "APP_ID", $appId
 
 Set-Content "k8s\service-rendered.yaml" $serviceRendered
+
+$hpaTemplate = Get-Content "k8s\hpa.yaml" -Raw
+
+$hpaRendered = $hpaTemplate `
+    -replace "APP_ID", $appId
+
+Set-Content "k8s\hpa-rendered.yaml" $hpaRendered
