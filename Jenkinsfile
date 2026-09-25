@@ -23,13 +23,13 @@ pipeline {
             }
         }
 
-       stage('Build Docker Image') {
+        stage('Build Docker Image') {
     steps {
-        bat 'docker build -t deepak97813/deployflow:%BUILD_NUMBER% -t deepak97813/deployflow:latest .'
+        bat 'docker build -t deepak97813/%APP_ID%:%BUILD_NUMBER% -t deepak97813/%APP_ID%:latest .'
     }
 }
 
-        stage('Push Docker Image') {
+stage('Push Docker Image') {
     steps {
         withCredentials([usernamePassword(
             credentialsId: 'dockerhub-credentials',
@@ -37,11 +37,13 @@ pipeline {
             passwordVariable: 'DOCKER_PASSWORD'
         )]) {
             bat 'docker login -u %DOCKER_USERNAME% -p %DOCKER_PASSWORD%'
-            bat 'docker push deepak97813/deployflow:%BUILD_NUMBER%'
-            bat 'docker push deepak97813/deployflow:latest'
+            bat 'docker push deepak97813/%APP_ID%:%BUILD_NUMBER%'
+            bat 'docker push deepak97813/%APP_ID%:latest'
         }
     }
 }
+
+
 
         stage('Prepare Kubernetes Manifest') {
             steps {
