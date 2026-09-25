@@ -652,13 +652,16 @@ CMD ["java", "-jar", "app.jar"]
             echo "Pushing Docker image:"
             echo dockerImage
 
-            if (!params.DOCKER_PASSWORD?.trim()) {
+            def dockerPassword =
+                params.DOCKER_PASSWORD?.toString()
+
+            if (!dockerPassword || dockerPassword.trim().isEmpty()) {
                 error "Docker Hub password/token was not provided"
             }
 
             bat(
                 script:
-                    "echo \"${params.DOCKER_PASSWORD}\" | docker login -u \"deepak97813\" --password-stdin"
+                    "echo \"${dockerPassword}\" | docker login -u \"deepak97813\" --password-stdin"
             )
 
             bat(
