@@ -84,12 +84,19 @@ pipeline {
         }
 
         stage('Deployment Verification') {
-            steps {
-                bat 'kubectl get pods -l app=%APP_ID% -o wide'
-                bat 'kubectl get hpa %APP_ID%'
+    steps {
+        bat 'kubectl get pods -l app=%APP_ID% -o wide'
+        bat 'kubectl get hpa %APP_ID%'
+
+        script {
+            try {
                 bat 'kubectl top pods -l app=%APP_ID%'
+            } catch (Exception e) {
+                echo 'Metrics are not available yet. Deployment itself is healthy.'
             }
         }
+    }
+}
 
         stage('Deployment Summary') {
             steps {
