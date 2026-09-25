@@ -51,26 +51,27 @@ pipeline {
         }
 
         stage('Deploy to Kubernetes') {
-            steps {
-                bat 'kubectl apply -f k8s\\configmap.yaml'
-                bat 'kubectl apply -f k8s\\secret.yaml'
-                bat 'kubectl apply -f k8s\\deployment-rendered.yaml'
-                bat 'kubectl annotate deployment/%APP_ID% kubernetes.io/change-cause="Jenkins Build %BUILD_NUMBER%" --overwrite'
-                bat 'kubectl apply -f k8s\\service-rendered.yaml'
-                bat 'kubectl apply -f k8s\\hpa-rendered.yaml'
+    steps {
+        bat 'kubectl apply -f k8s\\configmap-rendered.yaml'
+        bat 'kubectl apply -f k8s\\secret-rendered.yaml'
+        bat 'kubectl apply -f k8s\\deployment-rendered.yaml'
+        bat 'kubectl annotate deployment/%APP_ID% kubernetes.io/change-cause="Jenkins Build %BUILD_NUMBER%" --overwrite'
+        bat 'kubectl apply -f k8s\\service-rendered.yaml'
+        bat 'kubectl apply -f k8s\\hpa-rendered.yaml'
 
-                script {
-                    try {
-                        bat 'kubectl rollout status deployment/%APP_ID% --timeout=120s'
-                    } catch (Exception e) {
-                        echo 'Deployment failed. Rolling back to the previous revision...'
-                        bat 'kubectl rollout undo deployment/%APP_ID%'
-                        bat 'kubectl rollout status deployment/%APP_ID% --timeout=120s'
-                        throw e
-                    }
-                }
+        script {
+            try {
+                bat 'kubectl rollout status deployment/%APP_ID% --timeout=120s'
+            } catch (Exception e) {
+                echo 'Deployment failed. Rolling back to the previous revision...'
+                bat 'kubectl rollout undo deployment/%APP_ID%'
+                bat 'kubectl rollout status deployment/%APP_ID% --timeout=120s'
+                throw e
             }
         }
+    }
+}
+              
 
         stage('Health Check') {
             steps {
