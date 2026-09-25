@@ -3,17 +3,10 @@
 <html lang="en">
 
 <head>
-
-```
-<meta charset="UTF-8">
-
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>DeployFlow Dashboard</title>
-
-<link rel="stylesheet" href="style.css">
-```
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeployFlow Dashboard</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
@@ -58,6 +51,16 @@
             value="main"
             required
         >
+
+        <input
+            type="text"
+            id="service-path"
+            placeholder="Service Path (leave empty for repository root)"
+        >
+
+        <small>
+            Example: frontend or ml-service
+        </small>
 
         <h3>Environment Variables</h3>
 
@@ -141,6 +144,7 @@
 
 </div>
 
+
 <div class="card">
 
     <h2>Applications</h2>
@@ -150,6 +154,7 @@
     </div>
 
 </div>
+
 
 <div class="card">
 
@@ -165,7 +170,9 @@
 
 </div>
 
+
 <h2>Dashboard</h2>
+
 
 <div class="card">
 
@@ -181,6 +188,7 @@
 
 </div>
 
+
 <div class="cards">
 
     <div class="card">
@@ -192,6 +200,7 @@
         </p>
 
     </div>
+
 
     <div class="card">
 
@@ -211,6 +220,7 @@
 
     </div>
 
+
     <div class="card">
 
         <h3>Deployment Status</h3>
@@ -220,6 +230,7 @@
         </p>
 
     </div>
+
 
     <div class="card">
 
@@ -233,6 +244,7 @@
 
 </div>
 
+
 <div class="cards">
 
     <div class="card">
@@ -245,6 +257,7 @@
 
     </div>
 
+
     <div class="card">
 
         <h3>HPA</h3>
@@ -254,6 +267,7 @@
         </p>
 
     </div>
+
 
     <div class="card">
 
@@ -267,6 +281,7 @@
 
 </div>
 
+
 <div class="card activity">
 
     <h2>Pods</h2>
@@ -279,6 +294,7 @@
 
 </div>
 
+
 <div class="card activity">
 
     <h2>Deployment History</h2>
@@ -290,6 +306,7 @@
     </ul>
 
 </div>
+
 
 <div class="card activity">
 

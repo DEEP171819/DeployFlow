@@ -15,8 +15,10 @@ spec:
       containers:
         - name: APP_ID
           image: deepak97813/APP_ID:IMAGE_TAG
+          imagePullPolicy: Always
+
           ports:
-            - containerPort: 3000
+            - containerPort: APP_PORT
 
           envFrom:
             - configMapRef:
@@ -26,17 +28,21 @@ spec:
 
           livenessProbe:
             httpGet:
-              path: /api/health
-              port: 3000
-            initialDelaySeconds: 10
+              path: HEALTH_PATH
+              port: APP_PORT
+            initialDelaySeconds: 20
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
 
           readinessProbe:
             httpGet:
-              path: /api/health
-              port: 3000
-            initialDelaySeconds: 5
+              path: HEALTH_PATH
+              port: APP_PORT
+            initialDelaySeconds: 10
             periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 5
 
           resources:
             requests:

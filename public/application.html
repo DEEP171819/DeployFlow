@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -9,122 +10,131 @@
 
 <body>
 
-    <header>
-        <h1>DeployFlow</h1>
-        <p>Application Details</p>
-    </header>
+```
+<header>
+    <h1>DeployFlow</h1>
+    <p>Application Details</p>
+</header>
 
-    <main>
+<main>
 
-        <div id="loading">
-            Loading application...
-        </div>
+    <div id="loading">
+        Loading application...
+    </div>
 
-        <div id="application-content" style="display: none;">
+    <div id="application-content" style="display: none;">
 
-            <section class="card">
-                <h2 id="application-name">Application</h2>
+        <section class="card">
+            <h2 id="application-name">Application</h2>
 
-                <p>
-                    <strong>Status:</strong>
-                    <span id="application-status">--</span>
-                </p>
+            <p>
+                <strong>Status:</strong>
+                <span id="application-status">--</span>
+            </p>
 
-                <p>
-                    <strong>Repository:</strong>
-                    <span id="repository">--</span>
-                </p>
+            <p>
+                <strong>Repository:</strong>
+                <span id="repository">--</span>
+            </p>
 
-                <p>
-                    <strong>Branch:</strong>
-                    <span id="branch">--</span>
-                </p>
+            <p>
+                <strong>Branch:</strong>
+                <span id="branch">--</span>
+            </p>
 
-                <p>
-                    <strong>Build:</strong>
-                    <span id="build-number">--</span>
-                </p>
+            <p>
+                <strong>Service Path:</strong>
+                <span id="service-path">Repository Root</span>
+            </p>
 
-                <p>
-                    <strong>Docker Image:</strong>
-                    <span id="docker-image">--</span>
-                </p>
+            <p>
+                <strong>Build:</strong>
+                <span id="build-number">--</span>
+            </p>
 
-                <p>
-                    <strong>Application URL:</strong>
-                    <a id="application-url"
-                       href="#"
-                       target="_blank">
-                        --
-                    </a>
-                </p>
-            </section>
+            <p>
+                <strong>Docker Image:</strong>
+                <span id="docker-image">--</span>
+            </p>
 
-
-            <section class="card">
-
-                <h2>Deployment Status</h2>
-
-                <p>
-                    <strong>Pods:</strong>
-                    <span id="replicas">--</span>
-                </p>
-
-                <p>
-                    <strong>HPA:</strong>
-                    <span id="hpa">--</span>
-                </p>
-
-                <h3>Pods</h3>
-
-                <ul id="pod-list">
-                    <li>Loading...</li>
-                </ul>
-
-            </section>
+            <p>
+                <strong>Application URL:</strong>
+                <a id="application-url"
+                   href="#"
+                   target="_blank">
+                    --
+                </a>
+            </p>
+        </section>
 
 
-            <section class="card">
+        <section class="card">
 
-                <h2>Deployment Actions</h2>
+            <h2>Deployment Status</h2>
 
-                <button id="redeploy-button">
-                    Redeploy Application
-                </button>
+            <p>
+                <strong>Pods:</strong>
+                <span id="replicas">--</span>
+            </p>
 
-                <button id="rollback-button">
-                    Rollback Deployment
-                </button>
+            <p>
+                <strong>HPA:</strong>
+                <span id="hpa">--</span>
+            </p>
 
-            </section>
+            <h3>Pods</h3>
 
+            <ul id="pod-list">
+                <li>Loading...</li>
+            </ul>
 
-            <section class="card">
-
-                <h2>Deployment History</h2>
-
-                <ul id="deployment-history">
-                    <li>Loading...</li>
-                </ul>
-
-            </section>
+        </section>
 
 
-            <section class="card">
+        <section class="card">
 
-                <h2>Deployment Logs</h2>
+            <h2>Deployment Actions</h2>
 
-                <pre id="deployment-logs">
-Loading logs...
-                </pre>
+            <button id="redeploy-button">
+                Redeploy Application
+            </button>
 
-            </section>
+            <button id="rollback-button">
+                Rollback Deployment
+            </button>
 
-        </div>
+        </section>
 
-    </main>
 
-    <script src="application.js"></script>
+        <section class="card">
+
+            <h2>Deployment History</h2>
+
+            <ul id="deployment-history">
+                <li>Loading...</li>
+            </ul>
+
+        </section>
+
+
+        <section class="card">
+
+            <h2>Deployment Logs</h2>
+
+            <pre id="deployment-logs">
+```
+
+Loading logs... </pre>
+
+```
+        </section>
+
+    </div>
+
+</main>
+
+<script src="application.js"></script>
+```
 
 </body>
 </html>

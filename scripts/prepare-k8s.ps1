@@ -2,6 +2,13 @@ $buildNumber = $env:BUILD_NUMBER
 $appId = $env:APP_ID
 $appName = $env:APP_NAME
 
+$projectType = $env:PROJECT_TYPE
+$framework = $env:FRAMEWORK
+$port = $env:PORT
+$healthPath = $env:HEALTH_PATH
+$isStatic = $env:IS_STATIC
+$outputDirectory = $env:OUTPUT_DIRECTORY
+
 $envVarsJson = $env:ENV_VARS
 $secretsJson = $env:SECRETS
 
@@ -9,6 +16,54 @@ Write-Host "Preparing Kubernetes manifests..."
 Write-Host "APP_ID: $appId"
 Write-Host "APP_NAME: $appName"
 Write-Host "BUILD_NUMBER: $buildNumber"
+Write-Host "PROJECT_TYPE: $projectType"
+Write-Host "FRAMEWORK: $framework"
+Write-Host "PORT: $port"
+Write-Host "HEALTH_PATH: $healthPath"
+Write-Host "IS_STATIC: $isStatic"
+
+# Validate required deployment values
+if ([string]::IsNullOrWhiteSpace($appId)) {
+    throw "APP_ID is required."
+}
+
+if ([string]::IsNullOrWhiteSpace($appName)) {
+    throw "APP_NAME is required."
+}
+
+if ([string]::IsNullOrWhiteSpace($buildNumber)) {
+    throw "BUILD_NUMBER is required."
+}
+
+if ([string]::IsNullOrWhiteSpace($port)) {
+    $port = "3000"
+}
+
+$portNumber = 0
+
+if (-not [int]::TryParse($port, [ref]$portNumber)) {
+    throw "Invalid PORT value: $port"
+}
+
+if ($portNumber -lt 1 -or $portNumber -gt 65535) {
+    throw "PORT must be between 1 and 65535."
+}
+
+if ([string]::IsNullOrWhiteSpace($healthPath)) {
+    $healthPath = "/"
+}
+
+if (-not $healthPath.StartsWith("/")) {
+    $healthPath = "/$healthPath"
+}
+
+# Prevent invalid Kubernetes/application paths
+if (
+    $healthPath.Contains("`n") -or
+    $healthPath.Contains("`r")
+) {
+    throw "Invalid HEALTH_PATH."
+}
 
 # Parse environment variables
 try {
@@ -16,7 +71,8 @@ try {
         $environmentVariables = @{}
     }
     else {
-        $environmentVariables = $envVarsJson | ConvertFrom-Json
+        $environmentVariables =
+            $envVarsJson | ConvertFrom-Json
     }
 }
 catch {
@@ -29,7 +85,8 @@ try {
         $secrets = @{}
     }
     else {
-        $secrets = $secretsJson | ConvertFrom-Json
+        $secrets =
+            $secretsJson | ConvertFrom-Json
     }
 }
 catch {
@@ -52,7 +109,7 @@ $configMapLines = @(
     "data:"
     "  NODE_ENV: `"production`""
     "  APP_NAME: `"$appName`""
-    "  PORT: `"3000`""
+    "  PORT: `"$portNumber`""
 )
 
 foreach ($property in $environmentVariables.PSObject.Properties) {
@@ -68,9 +125,11 @@ foreach ($property in $environmentVariables.PSObject.Properties) {
         throw "Invalid environment variable name: $key"
     }
 
-    $escapedValue = $value.Replace('\', '\\').Replace('"', '\"')
+    $escapedValue =
+        $value.Replace('\', '\\').Replace('"', '\"')
 
-    $configMapLines += "  ${key}: `"$escapedValue`""
+    $configMapLines +=
+        "  ${key}: `"$escapedValue`""
 }
 
 $configMapLines |
@@ -95,9 +154,11 @@ foreach ($property in $secrets.PSObject.Properties) {
         throw "Invalid secret name: $key"
     }
 
-    $escapedValue = $value.Replace('\', '\\').Replace('"', '\"')
+    $escapedValue =
+        $value.Replace('\', '\\').Replace('"', '\"')
 
-    $secretLines += "  ${key}: `"$escapedValue`""
+    $secretLines +=
+        "  ${key}: `"$escapedValue`""
 }
 
 $secretLines |
@@ -110,7 +171,9 @@ $deploymentTemplate =
 $deploymentRendered =
     $deploymentTemplate `
         -replace "APP_ID", $appId `
-        -replace "IMAGE_TAG", $buildNumber
+        -replace "IMAGE_TAG", $buildNumber `
+        -replace "APP_PORT", $portNumber `
+        -replace "HEALTH_PATH", $healthPath
 
 Set-Content `
     "k8s\deployment-rendered.yaml" `
@@ -122,7 +185,8 @@ $serviceTemplate =
 
 $serviceRendered =
     $serviceTemplate `
-        -replace "APP_ID", $appId
+        -replace "APP_ID", $appId `
+        -replace "APP_PORT", $portNumber
 
 Set-Content `
     "k8s\service-rendered.yaml" `
@@ -146,7 +210,8 @@ $ingressTemplate =
 
 $ingressRendered =
     $ingressTemplate `
-        -replace "APP_ID", $appId
+        -replace "APP_ID", $appId `
+        -replace "APP_PORT", $portNumber
 
 Set-Content `
     "k8s\ingress-rendered.yaml" `
@@ -154,11 +219,22 @@ Set-Content `
 
 Write-Host ""
 Write-Host "Generated Kubernetes manifests:"
+
 Get-ChildItem "k8s\*-rendered.yaml" |
     Select-Object Name
 
 Write-Host ""
+Write-Host "Deployment configuration:"
+Write-Host " - Project Type: $projectType"
+Write-Host " - Framework: $framework"
+Write-Host " - Port: $portNumber"
+Write-Host " - Health Path: $healthPath"
+Write-Host " - Static: $isStatic"
+Write-Host " - Output Directory: $outputDirectory"
+
+Write-Host ""
 Write-Host "Environment variables configured:"
+
 $environmentVariables.PSObject.Properties |
     ForEach-Object {
         Write-Host " - $($_.Name)"
@@ -166,6 +242,7 @@ $environmentVariables.PSObject.Properties |
 
 Write-Host ""
 Write-Host "Secrets configured:"
+
 $secrets.PSObject.Properties |
     ForEach-Object {
         Write-Host " - $($_.Name)"

@@ -1,3 +1,4 @@
+```groovy
 pipeline {
     agent any
 
@@ -45,11 +46,24 @@ pipeline {
         )
     }
 
-    stages {
+    environment {
+        DOCKER_USERNAME = 'deepak97813'
+        DOCKER_IMAGE = ''
 
-        /* =========================
-           CHECKOUT USER REPOSITORY
-        ========================= */
+        SERVICE_DIR = ''
+        PROJECT_TYPE = ''
+        FRAMEWORK = ''
+        PACKAGE_MANAGER = ''
+        BUILD_COMMAND = ''
+        START_COMMAND = ''
+        PORT = '3000'
+        HEALTH_PATH = '/'
+        IS_STATIC = 'false'
+        OUTPUT_DIRECTORY = ''
+        EXISTING_DOCKERFILE = 'false'
+    }
+
+    stages {
 
         stage('Checkout') {
             steps {
@@ -63,10 +77,6 @@ pipeline {
                 }
             }
         }
-
-        /* =========================
-           VALIDATE SERVICE PATH
-        ========================= */
 
         stage('Validate Service Path') {
             steps {
@@ -89,190 +99,302 @@ pipeline {
                         )
                     }
 
-                    env.SERVICE_DIR =
-                        serviceDir
+                    env.SERVICE_DIR = serviceDir
+                    env.DOCKER_IMAGE =
+                        "deepak97813/${params.APP_ID}"
                 }
             }
         }
 
-        /* =========================
-           DETECT PROJECT TYPE
-        ========================= */
-
-        stage('Detect Project Type') {
+        stage('Analyze Project') {
             steps {
                 script {
 
-                    def serviceDir =
-                        env.SERVICE_DIR
+                    def analyzer =
+                        "${env.WORKSPACE}\\services\\project-analyzer.js"
 
-                    if (
-                        fileExists(
-                            "${serviceDir}/Dockerfile"
-                        )
-                    ) {
-
-                        env.PROJECT_TYPE =
-                            "DOCKER"
-
-                    } else if (
-                        fileExists(
-                            "${serviceDir}/package.json"
-                        )
-                    ) {
-
-                        env.PROJECT_TYPE =
-                            "NODE"
-
-                    } else if (
-                        fileExists(
-                            "${serviceDir}/requirements.txt"
-                        )
-                    ) {
-
-                        env.PROJECT_TYPE =
-                            "PYTHON"
-
-                    } else if (
-                        fileExists(
-                            "${serviceDir}/pom.xml"
-                        )
-                    ) {
-
-                        env.PROJECT_TYPE =
-                            "JAVA_MAVEN"
-
-                    } else {
-
+                    if (!fileExists(analyzer)) {
                         error(
-                            "Unable to detect project type. No Dockerfile, package.json, requirements.txt or pom.xml found."
+                            "Project analyzer not found: ${analyzer}"
                         )
                     }
 
-                    echo "Detected Project Type: ${env.PROJECT_TYPE}"
+                    echo "Running DeployFlow Project Analyzer..."
+
+                    def analysisOutput =
+                        bat(
+                            script:
+                                "node \"${analyzer}\" \"${env.SERVICE_DIR}\"",
+                            returnStdout:
+                                true
+                        ).trim()
+
+                    echo "Analyzer Output:"
+                    echo analysisOutput
+
+                    def jsonStart =
+                        analysisOutput.indexOf("{")
+
+                    if (jsonStart < 0) {
+                        error(
+                            "Project analyzer did not return valid JSON."
+                        )
+                    }
+
+                    def json =
+                        analysisOutput.substring(
+                            jsonStart
+                        )
+
+                    def analysis =
+                        readJSON(
+                            text: json
+                        )
+
+                    env.PROJECT_TYPE =
+                        analysis.type ?: ""
+
+                    env.FRAMEWORK =
+                        analysis.framework ?: ""
+
+                    env.PACKAGE_MANAGER =
+                        analysis.packageManager ?: ""
+
+                    env.BUILD_COMMAND =
+                        analysis.buildCommand ?: ""
+
+                    env.START_COMMAND =
+                        analysis.startCommand ?: ""
+
+                    env.PORT =
+                        String.valueOf(
+                            analysis.port ?: 3000
+                        )
+
+                    env.HEALTH_PATH =
+                        analysis.healthPath ?: "/"
+
+                    env.IS_STATIC =
+                        String.valueOf(
+                            analysis.isStatic ?: false
+                        )
+
+                    env.OUTPUT_DIRECTORY =
+                        analysis.outputDirectory ?: ""
+
+                    env.EXISTING_DOCKERFILE =
+                        String.valueOf(
+                            analysis.existingDockerfile ?: false
+                        )
+
+                    writeFile(
+                        file:
+                            "${env.SERVICE_DIR}/.deployflow-analysis.json",
+                        text:
+                            groovy.json.JsonOutput.prettyPrint(
+                                groovy.json.JsonOutput.toJson(
+                                    analysis
+                                )
+                            )
+                    )
+
+                    echo """
+==============================
+ DeployFlow Project Analysis
+==============================
+Project Type:        ${env.PROJECT_TYPE}
+Framework:           ${env.FRAMEWORK}
+Package Manager:     ${env.PACKAGE_MANAGER}
+Build Command:       ${env.BUILD_COMMAND}
+Start Command:       ${env.START_COMMAND}
+Port:                ${env.PORT}
+Health Path:         ${env.HEALTH_PATH}
+Static Application:  ${env.IS_STATIC}
+Output Directory:    ${env.OUTPUT_DIRECTORY}
+Existing Dockerfile: ${env.EXISTING_DOCKERFILE}
+==============================
+"""
                 }
             }
         }
-
-        /* =========================
-           INSTALL DEPENDENCIES
-        ========================= */
 
         stage('Install Dependencies') {
             steps {
                 script {
 
-                    def serviceDir =
-                        env.SERVICE_DIR
-
                     if (
-                        env.PROJECT_TYPE ==
-                        "NODE"
+                        env.PROJECT_TYPE == 'docker'
                     ) {
 
-                        dir(serviceDir) {
+                        echo "Dependencies handled by existing Dockerfile."
 
-                            bat '''
-                            npm install
-                            '''
+                    } else if (
+                        env.PROJECT_TYPE == 'node'
+                    ) {
+
+                        dir(env.SERVICE_DIR) {
+
+                            if (
+                                env.PACKAGE_MANAGER == 'pnpm'
+                            ) {
+
+                                bat '''
+                                corepack enable
+                                pnpm install --frozen-lockfile
+                                '''
+
+                            } else if (
+                                env.PACKAGE_MANAGER == 'yarn'
+                            ) {
+
+                                bat '''
+                                corepack enable
+                                yarn install --frozen-lockfile
+                                '''
+
+                            } else {
+
+                                bat '''
+                                npm ci
+                                '''
+                            }
                         }
 
                     } else if (
-                        env.PROJECT_TYPE ==
-                        "PYTHON"
+                        env.PROJECT_TYPE == 'python'
                     ) {
 
-                        dir(serviceDir) {
+                        dir(env.SERVICE_DIR) {
 
                             bat '''
+                            python -m pip install --upgrade pip
                             python -m pip install -r requirements.txt
                             '''
                         }
 
                     } else if (
-                        env.PROJECT_TYPE ==
-                        "JAVA_MAVEN"
+                        env.PROJECT_TYPE == 'java'
                     ) {
 
-                        dir(serviceDir) {
+                        dir(env.SERVICE_DIR) {
+
+                            if (
+                                env.PACKAGE_MANAGER == 'maven'
+                            ) {
+
+                                bat '''
+                                mvn dependency:go-offline
+                                '''
+
+                            } else {
+
+                                bat '''
+                                gradle dependencies
+                                '''
+                            }
+                        }
+
+                    } else if (
+                        env.PROJECT_TYPE == 'go'
+                    ) {
+
+                        dir(env.SERVICE_DIR) {
 
                             bat '''
-                            mvn clean install -DskipTests
+                            go mod download
                             '''
                         }
 
                     } else {
 
-                        echo "Dependency installation handled by Dockerfile."
+                        error(
+                            "Unsupported project type: ${env.PROJECT_TYPE}"
+                        )
                     }
                 }
             }
         }
 
-        /* =========================
-           TEST
-        ========================= */
-
-        stage('Test') {
+        stage('Build and Test') {
             steps {
                 script {
 
-                    def serviceDir =
-                        env.SERVICE_DIR
-
                     if (
-                        env.PROJECT_TYPE ==
-                        "NODE"
+                        env.PROJECT_TYPE == 'docker'
                     ) {
 
-                        dir(serviceDir) {
-
-                            bat '''
-                            if exist package.json (
-                                npm test --if-present
-                            )
-                            '''
-                        }
-
-                    } else if (
-                        env.PROJECT_TYPE ==
-                        "PYTHON"
-                    ) {
-
-                        dir(serviceDir) {
-
-                            bat '''
-                            if exist tests (
-                                python -m pytest
-                            ) else (
-                                echo No Python tests directory found. Skipping tests.
-                            )
-                            '''
-                        }
-
-                    } else if (
-                        env.PROJECT_TYPE ==
-                        "JAVA_MAVEN"
-                    ) {
-
-                        dir(serviceDir) {
-
-                            bat '''
-                            mvn test
-                            '''
-                        }
+                        echo "Build and test are handled by the existing Dockerfile."
 
                     } else {
 
-                        echo "Test execution handled by Dockerfile or project."
+                        dir(env.SERVICE_DIR) {
+
+                            if (
+                                env.PROJECT_TYPE == 'node'
+                            ) {
+
+                                if (
+                                    env.BUILD_COMMAND &&
+                                    env.BUILD_COMMAND != 'npm ci'
+                                ) {
+
+                                    bat """
+                                    ${env.BUILD_COMMAND}
+                                    """
+                                }
+
+                                bat '''
+                                npm test --if-present
+                                '''
+
+                            } else if (
+                                env.PROJECT_TYPE == 'python'
+                            ) {
+
+                                bat '''
+                                if exist tests (
+                                    python -m pytest
+                                ) else (
+                                    echo No Python tests directory found. Skipping tests.
+                                )
+                                '''
+
+                            } else if (
+                                env.PROJECT_TYPE == 'java'
+                            ) {
+
+                                if (
+                                    env.PACKAGE_MANAGER == 'maven'
+                                ) {
+
+                                    bat '''
+                                    mvn test
+                                    '''
+
+                                } else {
+
+                                    bat '''
+                                    gradle test
+                                    '''
+                                }
+
+                            } else if (
+                                env.PROJECT_TYPE == 'go'
+                            ) {
+
+                                bat '''
+                                go test ./...
+                                '''
+
+                            } else {
+
+                                echo "No build/test handler available."
+                            }
+                        }
                     }
                 }
             }
         }
-
-        /* =========================
-           GENERATE DOCKERFILE
-        ========================= */
 
         stage('Prepare Dockerfile') {
             steps {
@@ -282,46 +404,106 @@ pipeline {
                         env.SERVICE_DIR
 
                     if (
-                        env.PROJECT_TYPE ==
-                        "DOCKER"
+                        env.EXISTING_DOCKERFILE == 'true'
                     ) {
 
-                        echo "Dockerfile already exists. Using project Dockerfile."
+                        echo "Existing Dockerfile detected. Using project Dockerfile."
 
                     } else if (
-                        env.PROJECT_TYPE ==
-                        "NODE"
+                        env.PROJECT_TYPE == 'node'
                     ) {
 
-                        def dockerfile = '''
+                        if (
+                            env.IS_STATIC == 'true'
+                        ) {
+
+                            def dockerfile = """
+FROM node:22-alpine AS build
+
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN npm ci
+
+COPY . .
+
+RUN ${env.BUILD_COMMAND}
+
+FROM nginx:alpine
+
+COPY --from=build /app/${env.OUTPUT_DIRECTORY} /usr/share/nginx/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+"""
+
+                            writeFile(
+                                file:
+                                    "${serviceDir}/Dockerfile",
+                                text:
+                                    dockerfile.trim()
+                            )
+
+                        } else {
+
+                            def startParts =
+                                env.START_COMMAND
+                                    .trim()
+                                    .split(/\s+/)
+
+                            def dockerCommand =
+                                startParts.collect {
+                                    "\"${it}\""
+                                }.join(", ")
+
+                            def dockerfile = """
 FROM node:22-alpine
 
 WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 
 COPY . .
 
-EXPOSE 3000
+ENV PORT=${env.PORT}
 
-CMD ["npm", "start"]
-'''
+EXPOSE ${env.PORT}
 
-                        writeFile(
-                            file: "${serviceDir}/Dockerfile",
-                            text: dockerfile.trim()
-                        )
+CMD [${dockerCommand}]
+"""
+
+                            writeFile(
+                                file:
+                                    "${serviceDir}/Dockerfile",
+                                text:
+                                    dockerfile.trim()
+                            )
+                        }
 
                         echo "Generated Node.js Dockerfile."
 
                     } else if (
-                        env.PROJECT_TYPE ==
-                        "PYTHON"
+                        env.PROJECT_TYPE == 'python'
                     ) {
 
-                        def dockerfile = '''
+                        if (
+                            !env.START_COMMAND
+                        ) {
+                            error(
+                                "Could not determine Python start command."
+                            )
+                        }
+
+                        def escapedStartCommand =
+                            env.START_COMMAND
+                                .replace('\\', '\\\\')
+                                .replace('"', '\\"')
+
+                        def dockerfile = """
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -332,31 +514,34 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 8000
+EXPOSE ${env.PORT}
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-'''
+CMD ["sh", "-c", "${escapedStartCommand}"]
+"""
 
                         writeFile(
-                            file: "${serviceDir}/Dockerfile",
-                            text: dockerfile.trim()
+                            file:
+                                "${serviceDir}/Dockerfile",
+                            text:
+                                dockerfile.trim()
                         )
 
                         echo "Generated Python Dockerfile."
 
                     } else if (
-                        env.PROJECT_TYPE ==
-                        "JAVA_MAVEN"
+                        env.PROJECT_TYPE == 'java'
                     ) {
 
-                        def dockerfile = '''
+                        if (
+                            env.PACKAGE_MANAGER == 'maven'
+                        ) {
+
+                            def dockerfile = """
 FROM maven:3.9-eclipse-temurin-21 AS build
 
 WORKDIR /app
 
 COPY pom.xml .
-
-RUN mvn dependency:go-offline
 
 COPY src ./src
 
@@ -368,46 +553,109 @@ WORKDIR /app
 
 COPY --from=build /app/target/*.jar app.jar
 
-EXPOSE 8080
+EXPOSE ${env.PORT}
 
 ENTRYPOINT ["java", "-jar", "app.jar"]
-'''
+"""
+
+                            writeFile(
+                                file:
+                                    "${serviceDir}/Dockerfile",
+                                text:
+                                    dockerfile.trim()
+                            )
+
+                        } else {
+
+                            def dockerfile = """
+FROM gradle:8-jdk21 AS build
+
+WORKDIR /app
+
+COPY . .
+
+RUN gradle build --no-daemon
+
+FROM eclipse-temurin:21-jre
+
+WORKDIR /app
+
+COPY --from=build /app/build/libs/*.jar app.jar
+
+EXPOSE ${env.PORT}
+
+ENTRYPOINT ["java", "-jar", "app.jar"]
+"""
+
+                            writeFile(
+                                file:
+                                    "${serviceDir}/Dockerfile",
+                                text:
+                                    dockerfile.trim()
+                            )
+                        }
+
+                        echo "Generated Java Dockerfile."
+
+                    } else if (
+                        env.PROJECT_TYPE == 'go'
+                    ) {
+
+                        def dockerfile = """
+FROM golang:1.24-alpine AS build
+
+WORKDIR /app
+
+COPY . .
+
+RUN go build -o app .
+
+FROM alpine:latest
+
+WORKDIR /app
+
+COPY --from=build /app/app .
+
+EXPOSE ${env.PORT}
+
+CMD ["./app"]
+"""
 
                         writeFile(
-                            file: "${serviceDir}/Dockerfile",
-                            text: dockerfile.trim()
+                            file:
+                                "${serviceDir}/Dockerfile",
+                            text:
+                                dockerfile.trim()
                         )
 
-                        echo "Generated Java Maven Dockerfile."
+                        echo "Generated Go Dockerfile."
+
+                    } else {
+
+                        error(
+                            "Cannot generate Dockerfile for project type: ${env.PROJECT_TYPE}"
+                        )
                     }
                 }
             }
         }
-
-        /* =========================
-           BUILD DOCKER IMAGE
-        ========================= */
 
         stage('Build Docker Image') {
             steps {
                 script {
 
-                    def serviceDir =
-                        env.SERVICE_DIR
-
-                    dir(serviceDir) {
+                    dir(env.SERVICE_DIR) {
 
                         bat """
-                        docker build -t deepak97813/%APP_ID%:%BUILD_NUMBER% -t deepak97813/%APP_ID%:latest .
+                        docker build ^
+                            -t ${env.DOCKER_IMAGE}:${env.BUILD_NUMBER} ^
+                            -t ${env.DOCKER_IMAGE}:latest ^
+                            .
                         """
                     }
                 }
             }
         }
-
-        /* =========================
-           PUSH DOCKER IMAGE
-        ========================= */
 
         stage('Push Docker Image') {
             steps {
@@ -428,17 +676,13 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
                     bat '''
                     docker login -u %DOCKER_USERNAME% -p %DOCKER_PASSWORD%
 
-                    docker push deepak97813/%APP_ID%:%BUILD_NUMBER%
+                    docker push %DOCKER_IMAGE%:%BUILD_NUMBER%
 
-                    docker push deepak97813/%APP_ID%:latest
+                    docker push %DOCKER_IMAGE%:latest
                     '''
                 }
             }
         }
-
-        /* =========================
-           PREPARE KUBERNETES
-        ========================= */
 
         stage('Prepare Kubernetes Manifest') {
             steps {
@@ -448,10 +692,6 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
                 '''
             }
         }
-
-        /* =========================
-           DEPLOY KUBERNETES
-        ========================= */
 
         stage('Deploy to Kubernetes') {
             steps {
@@ -482,7 +722,7 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 
                     } catch (Exception e) {
 
-                        echo "Deployment failed. Rolling back to the previous revision..."
+                        echo "Deployment failed. Rolling back to previous revision..."
 
                         bat '''
                         kubectl rollout undo deployment/%APP_ID%
@@ -497,10 +737,6 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
                 }
             }
         }
-
-        /* =========================
-           HEALTH CHECK
-        ========================= */
 
         stage('Health Check') {
             steps {
@@ -518,10 +754,6 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
                 '''
             }
         }
-
-        /* =========================
-           DEPLOYMENT VERIFICATION
-        ========================= */
 
         stage('Deployment Verification') {
             steps {
@@ -548,10 +780,6 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
             }
         }
 
-        /* =========================
-           DEPLOYMENT SUMMARY
-        ========================= */
-
         stage('Deployment Summary') {
             steps {
 
@@ -561,7 +789,6 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
                         bat(
                             script:
                                 'kubectl get deployment %APP_ID% -o=jsonpath="{.spec.template.spec.containers[0].image}"',
-
                             returnStdout:
                                 true
                         ).trim()
@@ -570,7 +797,6 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
                         bat(
                             script:
                                 'kubectl get deployment %APP_ID% -o=jsonpath="{.status.readyReplicas}/{.status.replicas}"',
-
                             returnStdout:
                                 true
                         ).trim()
@@ -579,7 +805,6 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
                         bat(
                             script:
                                 'kubectl get hpa %APP_ID% -o=jsonpath="{.status.currentReplicas}/{.spec.maxReplicas}"',
-
                             returnStdout:
                                 true
                         ).trim()
@@ -588,13 +813,17 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 ==============================
  DeployFlow Deployment Summary
 ==============================
-Build:          #${BUILD_NUMBER}
-Project Type:   ${env.PROJECT_TYPE}
-Service Path:   ${params.SERVICE_PATH ?: '(repository root)'}
-Docker Image:   ${image}
-Ready Pods:     ${replicas}
-HPA Replicas:   ${hpa}
-Deployment:     SUCCESSFUL
+Build:              #${BUILD_NUMBER}
+Project Type:       ${env.PROJECT_TYPE}
+Framework:          ${env.FRAMEWORK}
+Service Path:       ${params.SERVICE_PATH ?: '(repository root)'}
+Port:               ${env.PORT}
+Health Path:        ${env.HEALTH_PATH}
+Static Application: ${env.IS_STATIC}
+Docker Image:       ${image}
+Ready Pods:         ${replicas}
+HPA Replicas:       ${hpa}
+Deployment:         SUCCESSFUL
 ==============================
 """
                 }
@@ -602,3 +831,4 @@ Deployment:     SUCCESSFUL
         }
     }
 }
+```

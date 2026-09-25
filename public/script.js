@@ -731,18 +731,14 @@ event => {
 );
 
 document
-.getElementById(
-"add-env-button"
-)
+.getElementById("add-env-button")
 .addEventListener(
 "click",
 addEnvironmentVariableRow
 );
 
 document
-.getElementById(
-"add-secret-button"
-)
+.getElementById("add-secret-button")
 .addEventListener(
 "click",
 addSecretRow
@@ -938,6 +934,14 @@ async event => {
                 .value
                 .trim();
 
+        const servicePath =
+            document
+                .getElementById(
+                    "service-path"
+                )
+                .value
+                .trim();
+
         const environmentVariables =
             collectEnvironmentVariables();
 
@@ -965,6 +969,7 @@ async event => {
                                 name,
                                 repository,
                                 branch,
+                                servicePath,
                                 environmentVariables,
                                 secrets
                             })
