@@ -52,3 +52,10 @@ Set-Content "k8s\secret-rendered.yaml" $secretRendered
 Write-Host ""
 Write-Host "Generated Kubernetes manifests:"
 Get-ChildItem "k8s\*-rendered.yaml" | Select-Object Name
+
+$ingressTemplate = Get-Content "k8s\ingress.yaml" -Raw
+
+$ingressRendered = $ingressTemplate `
+    -replace "APP_ID", $appId
+
+Set-Content "k8s\ingress-rendered.yaml" $ingressRendered

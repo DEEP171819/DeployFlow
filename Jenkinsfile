@@ -58,6 +58,7 @@ pipeline {
         bat 'kubectl annotate deployment/%APP_ID% kubernetes.io/change-cause="Jenkins Build %BUILD_NUMBER%" --overwrite'
         bat 'kubectl apply -f k8s\\service-rendered.yaml'
         bat 'kubectl apply -f k8s\\hpa-rendered.yaml'
+        bat 'kubectl apply -f k8s\\ingress-rendered.yaml'
 
         script {
             try {
