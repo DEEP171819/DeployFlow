@@ -1172,18 +1172,24 @@ for (
     });
 
             const jenkinsResponse =
-                await fetch(
-                    `${JENKINS_URL}/job/DeployFlow-CI-CD/buildWithParameters?${params.toString()}`,
-                    {
-                        method:
-                            "POST",
+    await fetch(
+        `${JENKINS_URL}/job/DeployFlow-CI-CD/buildWithParameters`,
+        {
+            method:
+                "POST",
 
-                        headers: {
-                            Authorization:
-                                `Basic ${credentials}`
-                        }
-                    }
-                );
+            headers: {
+                Authorization:
+                    `Basic ${credentials}`,
+
+                "Content-Type":
+                    "application/x-www-form-urlencoded"
+            },
+
+            body:
+                params.toString()
+        }
+    );
 
             if (!jenkinsResponse.ok) {
 
@@ -1672,18 +1678,24 @@ app.post(
             );
 
             const jenkinsResponse =
-                await fetch(
-                    `${JENKINS_URL}/job/DeployFlow-CI-CD/buildWithParameters?${params.toString()}`,
-                    {
-                        method:
-                            "POST",
+    await fetch(
+        `${JENKINS_URL}/job/DeployFlow-CI-CD/buildWithParameters`,
+        {
+            method:
+                "POST",
 
-                        headers: {
-                            Authorization:
-                                `Basic ${credentials}`
-                        }
-                    }
-                );
+            headers: {
+                Authorization:
+                    `Basic ${credentials}`,
+
+                "Content-Type":
+                    "application/x-www-form-urlencoded"
+            },
+
+            body:
+                params.toString()
+        }
+    );
 
             if (!jenkinsResponse.ok) {
 
