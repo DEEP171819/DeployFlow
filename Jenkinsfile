@@ -1,4 +1,5 @@
 pipeline {
+
     agent any
 
     parameters {
@@ -17,7 +18,7 @@ pipeline {
         string(
             name: 'SERVICE_PATH',
             defaultValue: '',
-            description: 'Application directory inside repository. Leave empty for repository root.'
+            description: 'Optional service directory inside repository'
         )
 
         string(
@@ -39,26 +40,22 @@ pipeline {
         )
 
         password(
+            name: 'DOCKER_PASSWORD',
+            defaultValue: '',
+            description: 'Docker Hub password or access token'
+        )
+
+        text(
             name: 'SECRETS',
             defaultValue: '{}',
-            description: 'Secrets as JSON'
+            description: 'Application secrets as JSON'
         )
     }
 
     environment {
         DOCKER_USERNAME = 'deepak97813'
         DOCKER_IMAGE = ''
-
-        PROJECT_TYPE = ''
-        FRAMEWORK = ''
-        PACKAGE_MANAGER = ''
-        BUILD_COMMAND = ''
-        START_COMMAND = ''
-        PORT = '3000'
-        HEALTH_PATH = '/'
-        IS_STATIC = 'false'
-        OUTPUT_DIRECTORY = ''
-        EXISTING_DOCKERFILE = 'false'
+        ANALYSIS_FILE = 'deployflow-env.properties'
     }
 
     stages {
@@ -69,8 +66,8 @@ pipeline {
                     deleteDir()
 
                     git(
-                        branch: params.BRANCH,
-                        url: params.REPOSITORY
+                        url: params.REPOSITORY,
+                        branch: params.BRANCH
                     )
                 }
             }
@@ -79,247 +76,270 @@ pipeline {
         stage('Validate Service Path') {
             steps {
                 script {
-                    def servicePath = params.SERVICE_PATH?.trim() ?: ''
 
-                    def serviceDir = servicePath
-                        ? "app/${servicePath}"
-                        : "app"
+                    def servicePath =
+                        params.SERVICE_PATH?.trim() ?: ''
 
                     echo "Service Path: ${servicePath ?: '(repository root)'}"
+
+                    def serviceDir = 'app'
+
+                    if (servicePath) {
+                        serviceDir =
+                            "app\\${servicePath.replace('/', '\\')}"
+                    }
+
                     echo "Service Directory: ${serviceDir}"
 
-                    if (!fileExists(serviceDir)) {
-                        error(
-                            "Service path does not exist: ${servicePath ?: '(repository root)'}"
-                        )
-                    }
-
                     if (
-                        !fileExists("${serviceDir}\\package.json") &&
-                        !fileExists("${serviceDir}\\requirements.txt") &&
-                        !fileExists("${serviceDir}\\pom.xml") &&
-                        !fileExists("${serviceDir}\\build.gradle") &&
-                        !fileExists("${serviceDir}\\go.mod") &&
-                        !fileExists("${serviceDir}\\Dockerfile") &&
-                        !fileExists("${serviceDir}\\docker-compose.yml") &&
-                        !fileExists("${serviceDir}\\index.html")
+                        servicePath.contains('..') ||
+                        servicePath.startsWith('/') ||
+                        servicePath.startsWith('\\') ||
+                        servicePath ==~ /^[A-Za-z]:.*/
                     ) {
-                        echo "Warning: Could not identify a standard project file yet."
+                        error "Invalid service path"
                     }
 
-                    if (!params.APP_ID?.trim()) {
-                        error("APP_ID is required.")
+                    if (!fileExists(serviceDir)) {
+                        error "Service directory does not exist: ${serviceDir}"
                     }
-
-                    env.DOCKER_IMAGE =
-                        "deepak97813/${params.APP_ID.trim()}"
                 }
             }
         }
 
         stage('Analyze Project') {
-    steps {
-        script {
-            def serviceDir = 'app'
+            steps {
+                script {
 
-            if (params.SERVICE_PATH?.trim()) {
-                serviceDir = "app\\${params.SERVICE_PATH.trim().replace('/', '\\')}"
-            }
+                    def serviceDir = 'app'
 
-            if (!fileExists(serviceDir)) {
-                error "Service directory does not exist: ${serviceDir}"
-            }
+                    if (params.SERVICE_PATH?.trim()) {
+                        serviceDir =
+                            "app\\${params.SERVICE_PATH.trim().replace('/', '\\')}"
+                    }
 
-            echo "Analyzing: ${serviceDir}"
+                    if (!fileExists(serviceDir)) {
+                        error "Service directory does not exist: ${serviceDir}"
+                    }
 
-            def analyzerOutput = bat(
-                script: "node \"${env.WORKSPACE}\\services\\project-analyzer.js\" \"${serviceDir}\"",
-                returnStdout: true
-            ).trim()
+                    echo "Analyzing: ${serviceDir}"
 
-            echo "Analyzer Output:"
-            echo analyzerOutput
+                    def analyzerOutput = bat(
+                        script:
+                            "node \"${env.WORKSPACE}\\services\\project-analyzer.js\" \"${serviceDir}\"",
+                        returnStdout: true
+                    ).trim()
 
-            def jsonStart = analyzerOutput.indexOf('{')
+                    echo "Analyzer Output:"
+                    echo analyzerOutput
 
-            if (jsonStart < 0) {
-                error "Analyzer did not return valid JSON"
-            }
+                    def jsonStart =
+                        analyzerOutput.indexOf('{')
 
-            def json = analyzerOutput.substring(jsonStart)
+                    if (jsonStart < 0) {
+                        error "Analyzer did not return valid JSON"
+                    }
 
-            writeFile(
-                file: 'analysis.json',
-                text: json
-            )
+                    def json =
+                        analyzerOutput.substring(jsonStart)
 
-            bat '''
-node -e "const fs=require('fs'); const a=JSON.parse(fs.readFileSync('analysis.json','utf8')); const lines=['PROJECT_TYPE='+String(a.type||''),'FRAMEWORK='+String(a.framework||''),'PACKAGE_MANAGER='+String(a.packageManager||''),'BUILD_COMMAND='+String(a.buildCommand||''),'START_COMMAND='+String(a.startCommand||''),'PORT='+String(a.port||3000),'HEALTH_PATH='+String(a.healthPath||'/'),'IS_STATIC='+(a.isStatic?'true':'false'),'OUTPUT_DIRECTORY='+String(a.outputDirectory||''),'EXISTING_DOCKERFILE='+(a.existingDockerfile?'true':'false')]; fs.writeFileSync('analysis.properties',lines.join('\\n'));"
+                    writeFile(
+                        file: 'analysis.json',
+                        text: json
+                    )
+
+                    /*
+                     * Convert analyzer JSON into a simple
+                     * KEY=VALUE properties file.
+                     *
+                     * Node performs the JSON parsing so Jenkins
+                     * does not require readJSON or Groovy JSON
+                     * script approval.
+                     */
+
+                    bat '''
+node -e "const fs=require('fs'); const a=JSON.parse(fs.readFileSync('analysis.json','utf8')); const lines=['PROJECT_TYPE='+String(a.type||''),'FRAMEWORK='+String(a.framework||''),'PACKAGE_MANAGER='+String(a.packageManager||''),'BUILD_COMMAND='+String(a.buildCommand||''),'START_COMMAND='+String(a.startCommand||''),'PORT='+String(a.port||3000),'HEALTH_PATH='+String(a.healthPath||'/'),'IS_STATIC='+(a.isStatic?'true':'false'),'OUTPUT_DIRECTORY='+String(a.outputDirectory||''),'EXISTING_DOCKERFILE='+(a.existingDockerfile?'true':'false')]; fs.writeFileSync('deployflow-env.properties',lines.join('\\n'));"
 '''
 
-            echo "Generated analysis.properties"
+                    def propertiesText =
+                        readFile(
+                            file: 'deployflow-env.properties'
+                        ).trim()
 
-            def propertiesText = readFile(
-                file: 'analysis.properties'
-            ).trim()
+                    echo "Analysis Properties:"
+                    echo propertiesText
 
-            echo "Analysis Properties:"
-            echo propertiesText
+                    /*
+                     * Parse KEY=VALUE pairs.
+                     */
 
-            /*
-             * Parse properties directly.
-             * No Groovy JSON parser.
-             * No Jenkins readJSON plugin.
-             * No separate bat command for every property.
-             */
+                    def analysis = [:]
 
-            def analysisValues = [:]
+                    propertiesText.readLines().each { line ->
 
-            propertiesText.readLines().each { line ->
-                def separator = line.indexOf('=')
+                        def separator =
+                            line.indexOf('=')
 
-                if (separator > 0) {
-                    def key = line.substring(0, separator).trim()
-                    def value = line.substring(separator + 1).trim()
+                        if (separator > 0) {
 
-                    analysisValues[key] = value
-                }
-            }
+                            def key =
+                                line.substring(
+                                    0,
+                                    separator
+                                ).trim()
 
-            env.PROJECT_TYPE = analysisValues.get('PROJECT_TYPE', '')
-            env.FRAMEWORK = analysisValues.get('FRAMEWORK', '')
-            env.PACKAGE_MANAGER = analysisValues.get('PACKAGE_MANAGER', '')
-            env.BUILD_COMMAND = analysisValues.get('BUILD_COMMAND', '')
-            env.START_COMMAND = analysisValues.get('START_COMMAND', '')
-            env.PORT = analysisValues.get('PORT', '3000')
-            env.HEALTH_PATH = analysisValues.get('HEALTH_PATH', '/')
-            env.IS_STATIC = analysisValues.get('IS_STATIC', 'false')
-            env.OUTPUT_DIRECTORY = analysisValues.get('OUTPUT_DIRECTORY', '')
-            env.EXISTING_DOCKERFILE = analysisValues.get('EXISTING_DOCKERFILE', 'false')
+                            def value =
+                                line.substring(
+                                    separator + 1
+                                ).trim()
 
-            echo """
+                            analysis[key] = value
+                        }
+                    }
+
+                    /*
+                     * Validate analyzer result.
+                     */
+
+                    if (!analysis['PROJECT_TYPE']?.trim()) {
+                        error "Project analyzer returned an empty project type"
+                    }
+
+                    /*
+                     * Save analyzer JSON as well.
+                     */
+
+                    writeFile(
+                        file: '.deployflow-analysis.json',
+                        text: json
+                    )
+
+                    echo """
 ==============================
  DeployFlow Project Analysis
 ==============================
-Project Type:        ${env.PROJECT_TYPE}
-Framework:           ${env.FRAMEWORK}
-Package Manager:     ${env.PACKAGE_MANAGER}
-Build Command:       ${env.BUILD_COMMAND}
-Start Command:       ${env.START_COMMAND}
-Port:                ${env.PORT}
-Health Path:         ${env.HEALTH_PATH}
-Static Application:  ${env.IS_STATIC}
-Output Directory:    ${env.OUTPUT_DIRECTORY}
-Existing Dockerfile: ${env.EXISTING_DOCKERFILE}
+Project Type:        ${analysis['PROJECT_TYPE']}
+Framework:           ${analysis['FRAMEWORK']}
+Package Manager:     ${analysis['PACKAGE_MANAGER']}
+Build Command:       ${analysis['BUILD_COMMAND']}
+Start Command:       ${analysis['START_COMMAND']}
+Port:                ${analysis['PORT']}
+Health Path:         ${analysis['HEALTH_PATH']}
+Static Application:  ${analysis['IS_STATIC']}
+Output Directory:    ${analysis['OUTPUT_DIRECTORY']}
+Existing Dockerfile: ${analysis['EXISTING_DOCKERFILE']}
 Service Path:        ${params.SERVICE_PATH?.trim() ?: '(repository root)'}
 ==============================
 """
 
-            if (!env.PROJECT_TYPE?.trim()) {
-                error "Project analyzer returned an empty project type"
+                    /*
+                     * Store the values in files rather than
+                     * relying on Jenkins env mutation.
+                     */
+
+                    writeFile(
+                        file: 'deployflow-analysis.env',
+                        text: """PROJECT_TYPE=${analysis['PROJECT_TYPE']}
+FRAMEWORK=${analysis['FRAMEWORK']}
+PACKAGE_MANAGER=${analysis['PACKAGE_MANAGER']}
+BUILD_COMMAND=${analysis['BUILD_COMMAND']}
+START_COMMAND=${analysis['START_COMMAND']}
+PORT=${analysis['PORT']}
+HEALTH_PATH=${analysis['HEALTH_PATH']}
+IS_STATIC=${analysis['IS_STATIC']}
+OUTPUT_DIRECTORY=${analysis['OUTPUT_DIRECTORY']}
+EXISTING_DOCKERFILE=${analysis['EXISTING_DOCKERFILE']}
+"""
+                    )
+                }
             }
         }
-    }
-}
 
         stage('Install Dependencies') {
             steps {
                 script {
-                    def servicePath =
-                        params.SERVICE_PATH?.trim() ?: ''
 
-                    def serviceDir =
-                        servicePath
-                            ? "app/${servicePath}"
-                            : "app"
+                    def analysisText =
+                        readFile(
+                            file: 'deployflow-env.properties'
+                        ).trim()
 
-                    if (env.PROJECT_TYPE == 'docker') {
+                    def analysis = [:]
 
-                        echo "Dependencies handled by existing Dockerfile."
+                    analysisText.readLines().each { line ->
 
-                    } else if (env.PROJECT_TYPE == 'node') {
+                        def separator =
+                            line.indexOf('=')
+
+                        if (separator > 0) {
+                            def key =
+                                line.substring(
+                                    0,
+                                    separator
+                                ).trim()
+
+                            def value =
+                                line.substring(
+                                    separator + 1
+                                ).trim()
+
+                            analysis[key] = value
+                        }
+                    }
+
+                    def projectType =
+                        analysis['PROJECT_TYPE']
+
+                    def serviceDir = 'app'
+
+                    if (params.SERVICE_PATH?.trim()) {
+                        serviceDir =
+                            "app\\${params.SERVICE_PATH.trim().replace('/', '\\')}"
+                    }
+
+                    echo "Installing dependencies for: ${projectType}"
+
+                    if (projectType == 'node') {
+
+                        dir(serviceDir) {
+                            bat 'npm install'
+                        }
+
+                    } else if (projectType == 'python') {
 
                         dir(serviceDir) {
 
-                            if (
-                                env.PACKAGE_MANAGER ==
-                                'pnpm'
-                            ) {
-
-                                bat '''
-                                corepack enable
-                                pnpm install --frozen-lockfile
-                                '''
-
-                            } else if (
-                                env.PACKAGE_MANAGER ==
-                                'yarn'
-                            ) {
-
-                                bat '''
-                                corepack enable
-                                yarn install --frozen-lockfile
-                                '''
-
+                            if (fileExists('requirements.txt')) {
+                                bat 'python -m pip install -r requirements.txt'
                             } else {
-
-                                bat '''
-                                npm ci
-                                '''
+                                echo 'No requirements.txt found'
                             }
                         }
 
-                    } else if (
-                        env.PROJECT_TYPE == 'python'
-                    ) {
+                    } else if (projectType == 'java') {
 
                         dir(serviceDir) {
 
-                            bat '''
-                            python -m pip install --upgrade pip
-                            python -m pip install -r requirements.txt
-                            '''
-                        }
-
-                    } else if (
-                        env.PROJECT_TYPE == 'java'
-                    ) {
-
-                        dir(serviceDir) {
-
-                            if (
-                                env.PACKAGE_MANAGER ==
-                                'maven'
-                            ) {
-
-                                bat '''
-                                mvn dependency:go-offline
-                                '''
-
+                            if (fileExists('pom.xml')) {
+                                bat 'mvn install -DskipTests'
                             } else {
-
-                                bat '''
-                                gradle dependencies
-                                '''
+                                echo 'No pom.xml found'
                             }
                         }
 
-                    } else if (
-                        env.PROJECT_TYPE == 'go'
-                    ) {
+                    } else if (projectType == 'docker') {
+
+                        echo 'Docker project detected. Dependency installation handled by Dockerfile.'
+
+                    } else if (projectType == 'go') {
 
                         dir(serviceDir) {
-
-                            bat '''
-                            go mod download
-                            '''
+                            bat 'go mod download'
                         }
 
                     } else {
 
-                        error(
-                            "Unsupported project type: ${env.PROJECT_TYPE}"
-                        )
+                        error "Unsupported project type: ${projectType}"
                     }
                 }
             }
@@ -328,89 +348,99 @@ Service Path:        ${params.SERVICE_PATH?.trim() ?: '(repository root)'}
         stage('Build and Test') {
             steps {
                 script {
-                    def servicePath =
-                        params.SERVICE_PATH?.trim() ?: ''
 
-                    def serviceDir =
-                        servicePath
-                            ? "app/${servicePath}"
-                            : "app"
+                    def analysisText =
+                        readFile(
+                            file: 'deployflow-env.properties'
+                        ).trim()
 
-                    if (env.PROJECT_TYPE == 'docker') {
+                    def analysis = [:]
 
-                        echo "Build and test are handled by the existing Dockerfile."
+                    analysisText.readLines().each { line ->
 
-                    } else {
+                        def separator =
+                            line.indexOf('=')
+
+                        if (separator > 0) {
+                            def key =
+                                line.substring(
+                                    0,
+                                    separator
+                                ).trim()
+
+                            def value =
+                                line.substring(
+                                    separator + 1
+                                ).trim()
+
+                            analysis[key] = value
+                        }
+                    }
+
+                    def projectType =
+                        analysis['PROJECT_TYPE']
+
+                    def serviceDir = 'app'
+
+                    if (params.SERVICE_PATH?.trim()) {
+                        serviceDir =
+                            "app\\${params.SERVICE_PATH.trim().replace('/', '\\')}"
+                    }
+
+                    echo "Build/Test project type: ${projectType}"
+
+                    if (projectType == 'node') {
 
                         dir(serviceDir) {
 
-                            if (
-                                env.PROJECT_TYPE ==
-                                'node'
-                            ) {
+                            if (fileExists('package.json')) {
 
-                                if (
-                                    env.BUILD_COMMAND &&
-                                    env.BUILD_COMMAND != 'npm ci'
-                                ) {
+                                bat 'npm test --if-present'
+                                bat 'npm run build --if-present'
 
-                                    bat """
-                                    ${env.BUILD_COMMAND}
-                                    """
-                                }
+                            }
+                        }
 
-                                bat '''
-                                npm test --if-present
-                                '''
+                    } else if (projectType == 'python') {
 
-                            } else if (
-                                env.PROJECT_TYPE ==
-                                'python'
-                            ) {
+                        dir(serviceDir) {
 
-                                bat '''
-                                if exist tests (
-                                    python -m pytest
-                                ) else (
-                                    echo No Python tests directory found. Skipping tests.
-                                )
-                                '''
+                            if (fileExists('pytest.ini') ||
+                                fileExists('tests')) {
 
-                            } else if (
-                                env.PROJECT_TYPE ==
-                                'java'
-                            ) {
-
-                                if (
-                                    env.PACKAGE_MANAGER ==
-                                    'maven'
-                                ) {
-
-                                    bat '''
-                                    mvn test
-                                    '''
-
-                                } else {
-
-                                    bat '''
-                                    gradle test
-                                    '''
-                                }
-
-                            } else if (
-                                env.PROJECT_TYPE ==
-                                'go'
-                            ) {
-
-                                bat '''
-                                go test ./...
-                                '''
+                                bat 'python -m pytest'
 
                             } else {
 
-                                echo "No build/test handler available."
+                                echo 'No pytest configuration found. Skipping tests.'
                             }
                         }
+
+                    } else if (projectType == 'java') {
+
+                        dir(serviceDir) {
+
+                            if (fileExists('pom.xml')) {
+                                bat 'mvn test'
+                            }
+
+                        }
+
+                    } else if (projectType == 'go') {
+
+                        dir(serviceDir) {
+
+                            bat 'go test ./...'
+
+                        }
+
+                    } else if (projectType == 'docker') {
+
+                        echo 'Docker project detected. Dockerfile will perform application build.'
+
+                    } else {
+
+                        error "Unsupported project type: ${projectType}"
                     }
                 }
             }
@@ -419,130 +449,85 @@ Service Path:        ${params.SERVICE_PATH?.trim() ?: '(repository root)'}
         stage('Prepare Dockerfile') {
             steps {
                 script {
-                    def servicePath =
-                        params.SERVICE_PATH?.trim() ?: ''
 
-                    def serviceDir =
-                        servicePath
-                            ? "app/${servicePath}"
-                            : "app"
+                    def analysisText =
+                        readFile(
+                            file: 'deployflow-env.properties'
+                        ).trim()
 
-                    if (
-                        env.EXISTING_DOCKERFILE ==
-                        'true'
-                    ) {
+                    def analysis = [:]
 
-                        echo "Existing Dockerfile detected. Using project Dockerfile."
+                    analysisText.readLines().each { line ->
 
-                    } else if (
-                        env.PROJECT_TYPE ==
-                        'node'
-                    ) {
+                        def separator =
+                            line.indexOf('=')
 
-                        if (
-                            env.IS_STATIC ==
-                            'true'
-                        ) {
+                        if (separator > 0) {
 
-                            def dockerfile = """
-FROM node:22-alpine AS build
+                            def key =
+                                line.substring(
+                                    0,
+                                    separator
+                                ).trim()
+
+                            def value =
+                                line.substring(
+                                    separator + 1
+                                ).trim()
+
+                            analysis[key] = value
+                        }
+                    }
+
+                    def serviceDir = 'app'
+
+                    if (params.SERVICE_PATH?.trim()) {
+                        serviceDir =
+                            "app\\${params.SERVICE_PATH.trim().replace('/', '\\')}"
+                    }
+
+                    def existingDockerfile =
+                        analysis['EXISTING_DOCKERFILE'] == 'true'
+
+                    if (existingDockerfile) {
+
+                        echo "Existing Dockerfile detected."
+
+                    } else {
+
+                        echo "No Dockerfile detected. Generating one."
+
+                        def projectType =
+                            analysis['PROJECT_TYPE']
+
+                        def port =
+                            analysis['PORT'] ?: '3000'
+
+                        if (projectType == 'node') {
+
+                            writeFile(
+                                file: "${serviceDir}\\Dockerfile",
+                                text: """FROM node:22-alpine
 
 WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm ci
+RUN npm install
 
 COPY . .
 
-RUN ${env.BUILD_COMMAND}
+EXPOSE ${port}
 
-FROM nginx:alpine
-
-COPY --from=build /app/${env.OUTPUT_DIRECTORY} /usr/share/nginx/html
-
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["npm", "start"]
 """
+                            )
+
+                        } else if (projectType == 'python') {
 
                             writeFile(
-                                file:
-                                    "${serviceDir}/Dockerfile",
-                                text:
-                                    dockerfile.trim()
-                            )
-
-                        } else {
-
-                            if (!env.START_COMMAND) {
-                                error(
-                                    "Could not determine Node.js start command."
-                                )
-                            }
-
-                            def startParts =
-                                env.START_COMMAND
-                                    .trim()
-                                    .split(/\s+/)
-
-                            def dockerCommand =
-                                startParts.collect {
-                                    "\"${it}\""
-                                }.join(", ")
-
-                            def dockerfile = """
-FROM node:22-alpine
-
-WORKDIR /app
-
-COPY package*.json ./
-
-RUN npm ci --omit=dev
-
-COPY . .
-
-ENV PORT=${env.PORT}
-
-EXPOSE ${env.PORT}
-
-CMD [${dockerCommand}]
-"""
-
-                            writeFile(
-                                file:
-                                    "${serviceDir}/Dockerfile",
-                                text:
-                                    dockerfile.trim()
-                            )
-                        }
-
-                        echo "Generated Node.js Dockerfile."
-
-                    } else if (
-                        env.PROJECT_TYPE ==
-                        'python'
-                    ) {
-
-                        if (!env.START_COMMAND) {
-                            error(
-                                "Could not determine Python start command."
-                            )
-                        }
-
-                        def escapedStartCommand =
-                            env.START_COMMAND
-                                .replace(
-                                    '\\',
-                                    '\\\\'
-                                )
-                                .replace(
-                                    '"',
-                                    '\\"'
-                                )
-
-                        def dockerfile = """
-FROM python:3.12-slim
+                                file: "${serviceDir}\\Dockerfile",
+                                text: """FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -552,98 +537,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE ${env.PORT}
+EXPOSE ${port}
 
-CMD ["sh", "-c", "${escapedStartCommand}"]
+CMD ["python", "app.py"]
 """
-
-                        writeFile(
-                            file:
-                                "${serviceDir}/Dockerfile",
-                            text:
-                                dockerfile.trim()
-                        )
-
-                        echo "Generated Python Dockerfile."
-
-                    } else if (
-                        env.PROJECT_TYPE ==
-                        'java'
-                    ) {
-
-                        if (
-                            env.PACKAGE_MANAGER ==
-                            'maven'
-                        ) {
-
-                            def dockerfile = """
-FROM maven:3.9-eclipse-temurin-21 AS build
-
-WORKDIR /app
-
-COPY pom.xml .
-
-COPY src ./src
-
-RUN mvn clean package -DskipTests
-
-FROM eclipse-temurin:21-jre
-
-WORKDIR /app
-
-COPY --from=build /app/target/*.jar app.jar
-
-EXPOSE ${env.PORT}
-
-ENTRYPOINT ["java", "-jar", "app.jar"]
-"""
-
-                            writeFile(
-                                file:
-                                    "${serviceDir}/Dockerfile",
-                                text:
-                                    dockerfile.trim()
                             )
 
-                        } else {
-
-                            def dockerfile = """
-FROM gradle:8-jdk21 AS build
-
-WORKDIR /app
-
-COPY . .
-
-RUN gradle build --no-daemon
-
-FROM eclipse-temurin:21-jre
-
-WORKDIR /app
-
-COPY --from=build /app/build/libs/*.jar app.jar
-
-EXPOSE ${env.PORT}
-
-ENTRYPOINT ["java", "-jar", "app.jar"]
-"""
+                        } else if (projectType == 'go') {
 
                             writeFile(
-                                file:
-                                    "${serviceDir}/Dockerfile",
-                                text:
-                                    dockerfile.trim()
-                            )
-                        }
-
-                        echo "Generated Java Dockerfile."
-
-                    } else if (
-                        env.PROJECT_TYPE ==
-                        'go'
-                    ) {
-
-                        def dockerfile = """
-FROM golang:1.24-alpine AS build
+                                file: "${serviceDir}\\Dockerfile",
+                                text: """FROM golang:1.25 AS builder
 
 WORKDIR /app
 
@@ -651,31 +555,59 @@ COPY . .
 
 RUN go build -o app .
 
-FROM alpine:latest
+FROM debian:bookworm-slim
 
 WORKDIR /app
 
-COPY --from=build /app/app .
+COPY --from=builder /app/app .
 
-EXPOSE ${env.PORT}
+EXPOSE ${port}
 
 CMD ["./app"]
 """
+                            )
 
-                        writeFile(
-                            file:
-                                "${serviceDir}/Dockerfile",
-                            text:
-                                dockerfile.trim()
-                        )
+                        } else if (projectType == 'java') {
 
-                        echo "Generated Go Dockerfile."
+                            if (fileExists("${serviceDir}\\pom.xml")) {
 
-                    } else {
+                                writeFile(
+                                    file: "${serviceDir}\\Dockerfile",
+                                    text: """FROM maven:3.9-eclipse-temurin-21 AS builder
 
-                        error(
-                            "Cannot generate Dockerfile for project type: ${env.PROJECT_TYPE}"
-                        )
+WORKDIR /app
+
+COPY pom.xml .
+
+RUN mvn dependency:go-offline
+
+COPY . .
+
+RUN mvn package -DskipTests
+
+FROM eclipse-temurin:21-jre
+
+WORKDIR /app
+
+COPY --from=builder /app/target/*.jar app.jar
+
+EXPOSE ${port}
+
+CMD ["java", "-jar", "app.jar"]
+"""
+                                )
+
+                            } else {
+
+                                error "Java project detected but pom.xml was not found."
+                            }
+
+                        } else {
+
+                            error "Cannot automatically generate Dockerfile for project type: ${projectType}"
+                        }
+
+                        echo "Dockerfile generated successfully."
                     }
                 }
             }
@@ -684,22 +616,54 @@ CMD ["./app"]
         stage('Build Docker Image') {
             steps {
                 script {
-                    def servicePath =
-                        params.SERVICE_PATH?.trim() ?: ''
 
-                    def serviceDir =
-                        servicePath
-                            ? "app/${servicePath}"
-                            : "app"
+                    def analysisText =
+                        readFile(
+                            file: 'deployflow-env.properties'
+                        ).trim()
+
+                    def analysis = [:]
+
+                    analysisText.readLines().each { line ->
+
+                        def separator =
+                            line.indexOf('=')
+
+                        if (separator > 0) {
+
+                            def key =
+                                line.substring(
+                                    0,
+                                    separator
+                                ).trim()
+
+                            def value =
+                                line.substring(
+                                    separator + 1
+                                ).trim()
+
+                            analysis[key] = value
+                        }
+                    }
+
+                    def serviceDir = 'app'
+
+                    if (params.SERVICE_PATH?.trim()) {
+                        serviceDir =
+                            "app\\${params.SERVICE_PATH.trim().replace('/', '\\')}"
+                    }
+
+                    env.DOCKER_IMAGE =
+                        "${env.DOCKER_USERNAME}/${params.APP_ID}:${env.BUILD_NUMBER}"
+
+                    echo "Building Docker image:"
+                    echo env.DOCKER_IMAGE
 
                     dir(serviceDir) {
 
-                        bat """
-                        docker build ^
-                            -t ${env.DOCKER_IMAGE}:${env.BUILD_NUMBER} ^
-                            -t ${env.DOCKER_IMAGE}:latest ^
-                            .
-                        """
+                        bat(
+                            "docker build -t ${env.DOCKER_IMAGE} ."
+                        )
                     }
                 }
             }
@@ -707,121 +671,219 @@ CMD ["./app"]
 
         stage('Push Docker Image') {
             steps {
+                script {
 
-                withCredentials([
-                    usernamePassword(
-                        credentialsId:
-                            'dockerhub-credentials',
-                        usernameVariable:
-                            'DOCKER_USERNAME',
-                        passwordVariable:
-                            'DOCKER_PASSWORD'
+                    if (!env.DOCKER_IMAGE?.trim()) {
+                        error "Docker image name is empty"
+                    }
+
+                    echo "Pushing image: ${env.DOCKER_IMAGE}"
+
+                    bat(
+                        "docker login -u ${env.DOCKER_USERNAME} -p \"${params.DOCKER_PASSWORD}\""
                     )
-                ]) {
 
-                    bat '''
-                    docker login -u %DOCKER_USERNAME% -p %DOCKER_PASSWORD%
-
-                    docker push %DOCKER_IMAGE%:%BUILD_NUMBER%
-
-                    docker push %DOCKER_IMAGE%:latest
-                    '''
+                    bat(
+                        "docker push ${env.DOCKER_IMAGE}"
+                    )
                 }
             }
         }
 
         stage('Prepare Kubernetes Manifest') {
             steps {
+                script {
 
-                powershell '''
-                .\\scripts\\prepare-k8s.ps1
-                '''
+                    def analysisText =
+                        readFile(
+                            file: 'deployflow-env.properties'
+                        ).trim()
+
+                    def analysis = [:]
+
+                    analysisText.readLines().each { line ->
+
+                        def separator =
+                            line.indexOf('=')
+
+                        if (separator > 0) {
+
+                            def key =
+                                line.substring(
+                                    0,
+                                    separator
+                                ).trim()
+
+                            def value =
+                                line.substring(
+                                    separator + 1
+                                ).trim()
+
+                            analysis[key] = value
+                        }
+                    }
+
+                    def projectType =
+                        analysis['PROJECT_TYPE']
+
+                    def framework =
+                        analysis['FRAMEWORK']
+
+                    def port =
+                        analysis['PORT'] ?: '3000'
+
+                    def healthPath =
+                        analysis['HEALTH_PATH'] ?: '/'
+
+                    def isStatic =
+                        analysis['IS_STATIC'] ?: 'false'
+
+                    def outputDirectory =
+                        analysis['OUTPUT_DIRECTORY'] ?: ''
+
+                    def existingDockerfile =
+                        analysis['EXISTING_DOCKERFILE'] ?: 'false'
+
+                    echo "Preparing Kubernetes manifests."
+
+                    echo "Project Type: ${projectType}"
+                    echo "Framework: ${framework}"
+                    echo "Port: ${port}"
+                    echo "Health Path: ${healthPath}"
+                    echo "Static: ${isStatic}"
+
+                    withEnv([
+                        "PROJECT_TYPE=${projectType}",
+                        "FRAMEWORK=${framework}",
+                        "PORT=${port}",
+                        "HEALTH_PATH=${healthPath}",
+                        "IS_STATIC=${isStatic}",
+                        "OUTPUT_DIRECTORY=${outputDirectory}",
+                        "EXISTING_DOCKERFILE=${existingDockerfile}",
+                        "ENV_VARS=${params.ENV_VARS}",
+                        "SECRETS=${params.SECRETS}"
+                    ]) {
+
+                        bat(
+                            script:
+                                "powershell -ExecutionPolicy Bypass -File \"${env.WORKSPACE}\\scripts\\prepare-k8s.ps1\""
+                        )
+                    }
+                }
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-
-                bat '''
-                kubectl apply -f k8s\\configmap-rendered.yaml
-
-                kubectl apply -f k8s\\secret-rendered.yaml
-
-                kubectl apply -f k8s\\deployment-rendered.yaml
-
-                kubectl annotate deployment/%APP_ID% kubernetes.io/change-cause="Jenkins Build %BUILD_NUMBER%" --overwrite
-
-                kubectl apply -f k8s\\service-rendered.yaml
-
-                kubectl apply -f k8s\\hpa-rendered.yaml
-
-                kubectl apply -f k8s\\ingress-rendered.yaml
-                '''
-
                 script {
 
-                    try {
+                    echo "Deploying application to Kubernetes."
 
-                        bat '''
-                        kubectl rollout status deployment/%APP_ID% --timeout=120s
-                        '''
+                    bat(
+                        "kubectl apply -f k8s\\configmap-rendered.yaml"
+                    )
 
-                    } catch (Exception e) {
+                    bat(
+                        "kubectl apply -f k8s\\secret-rendered.yaml"
+                    )
 
-                        echo "Deployment failed. Rolling back to previous revision..."
+                    bat(
+                        "kubectl apply -f k8s\\deployment-rendered.yaml"
+                    )
 
-                        bat '''
-                        kubectl rollout undo deployment/%APP_ID%
-                        '''
+                    bat(
+                        "kubectl apply -f k8s\\service-rendered.yaml"
+                    )
 
-                        bat '''
-                        kubectl rollout status deployment/%APP_ID% --timeout=120s
-                        '''
+                    bat(
+                        "kubectl apply -f k8s\\hpa-rendered.yaml"
+                    )
 
-                        throw e
-                    }
+                    bat(
+                        "kubectl apply -f k8s\\ingress-rendered.yaml"
+                    )
+
+                    echo "Kubernetes resources applied successfully."
                 }
             }
         }
 
         stage('Health Check') {
             steps {
+                script {
 
-                bat '''
-                kubectl get pods -l app=%APP_ID%
+                    def analysisText =
+                        readFile(
+                            file: 'deployflow-env.properties'
+                        ).trim()
 
-                kubectl get deployment %APP_ID%
+                    def analysis = [:]
 
-                kubectl get service %APP_ID%-service
+                    analysisText.readLines().each { line ->
 
-                kubectl get hpa %APP_ID%
+                        def separator =
+                            line.indexOf('=')
 
-                kubectl rollout status deployment/%APP_ID% --timeout=120s
-                '''
+                        if (separator > 0) {
+
+                            def key =
+                                line.substring(
+                                    0,
+                                    separator
+                                ).trim()
+
+                            def value =
+                                line.substring(
+                                    separator + 1
+                                ).trim()
+
+                            analysis[key] = value
+                        }
+                    }
+
+                    def port =
+                        analysis['PORT'] ?: '3000'
+
+                    echo "Checking Kubernetes pods."
+
+                    bat(
+                        "kubectl get pods -l app=${params.APP_ID}"
+                    )
+
+                    echo "Checking Kubernetes service."
+
+                    bat(
+                        "kubectl get service ${params.APP_ID}-service"
+                    )
+
+                    echo "Health check completed."
+                }
             }
         }
 
         stage('Deployment Verification') {
             steps {
-
-                bat '''
-                kubectl get pods -l app=%APP_ID% -o wide
-
-                kubectl get hpa %APP_ID%
-                '''
-
                 script {
 
-                    try {
+                    echo "Verifying deployment."
 
-                        bat '''
-                        kubectl top pods -l app=%APP_ID%
-                        '''
+                    bat(
+                        "kubectl rollout status deployment/${params.APP_ID} --timeout=120s"
+                    )
 
-                    } catch (Exception e) {
+                    echo "Deployment rollout successful."
 
-                        echo "Metrics are not available yet. Deployment itself is healthy."
-                    }
+                    bat(
+                        "kubectl get deployment ${params.APP_ID}"
+                    )
+
+                    bat(
+                        "kubectl get pods -l app=${params.APP_ID}"
+                    )
+
+                    bat(
+                        "kubectl get ingress ${params.APP_ID}-ingress"
+                    )
                 }
             }
         }
@@ -830,46 +892,97 @@ CMD ["./app"]
             steps {
                 script {
 
-                    def image = bat(
-                        script:
-                            'kubectl get deployment %APP_ID% -o=jsonpath="{.spec.template.spec.containers[0].image}"',
-                        returnStdout:
-                            true
-                    ).trim()
+                    def analysisText =
+                        readFile(
+                            file: 'deployflow-env.properties'
+                        ).trim()
 
-                    def replicas = bat(
-                        script:
-                            'kubectl get deployment %APP_ID% -o=jsonpath="{.status.readyReplicas}/{.status.replicas}"',
-                        returnStdout:
-                            true
-                    ).trim()
+                    def analysis = [:]
 
-                    def hpa = bat(
-                        script:
-                            'kubectl get hpa %APP_ID% -o=jsonpath="{.status.currentReplicas}/{.spec.maxReplicas}"',
-                        returnStdout:
-                            true
-                    ).trim()
+                    analysisText.readLines().each { line ->
+
+                        def separator =
+                            line.indexOf('=')
+
+                        if (separator > 0) {
+
+                            def key =
+                                line.substring(
+                                    0,
+                                    separator
+                                ).trim()
+
+                            def value =
+                                line.substring(
+                                    separator + 1
+                                ).trim()
+
+                            analysis[key] = value
+                        }
+                    }
 
                     echo """
-==============================
- DeployFlow Deployment Summary
-==============================
-Build:              #${BUILD_NUMBER}
-Project Type:       ${env.PROJECT_TYPE}
-Framework:          ${env.FRAMEWORK}
-Service Path:       ${params.SERVICE_PATH ?: '(repository root)'}
-Port:               ${env.PORT}
-Health Path:        ${env.HEALTH_PATH}
-Static Application: ${env.IS_STATIC}
-Docker Image:       ${image}
-Ready Pods:         ${replicas}
-HPA Replicas:       ${hpa}
-Deployment:         SUCCESSFUL
-==============================
+==================================================
+             DeployFlow Deployment
+==================================================
+
+Application:
+    ${params.APP_NAME}
+
+Application ID:
+    ${params.APP_ID}
+
+Repository:
+    ${params.REPOSITORY}
+
+Branch:
+    ${params.BRANCH}
+
+Service Path:
+    ${params.SERVICE_PATH?.trim() ?: '(repository root)'}
+
+Project Type:
+    ${analysis['PROJECT_TYPE']}
+
+Framework:
+    ${analysis['FRAMEWORK']}
+
+Port:
+    ${analysis['PORT']}
+
+Health Path:
+    ${analysis['HEALTH_PATH']}
+
+Docker Image:
+    ${env.DOCKER_IMAGE}
+
+Kubernetes:
+    Deployment: ${params.APP_ID}
+    Service:    ${params.APP_ID}-service
+    Ingress:    ${params.APP_ID}-ingress
+
+Application URL:
+    http://${params.APP_ID}.localhost
+
+==================================================
 """
                 }
             }
+        }
+    }
+
+    post {
+
+        success {
+            echo "DeployFlow pipeline completed successfully."
+        }
+
+        failure {
+            echo "DeployFlow pipeline failed."
+        }
+
+        always {
+            echo "Pipeline finished."
         }
     }
 }
