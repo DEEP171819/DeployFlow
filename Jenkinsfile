@@ -3,6 +3,14 @@ pipeline {
 
     stages {
 
+        stage('Checkout') {
+    steps {
+        deleteDir()
+        git branch: params.BRANCH,
+            url: params.REPOSITORY
+    }
+}
+
         stage('Install Dependencies') {
             steps {
                 bat 'npm install'
