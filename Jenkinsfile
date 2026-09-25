@@ -120,51 +120,33 @@ pipeline {
         stage('Analyze Project') {
     steps {
         script {
-            def servicePath = params.SERVICE_PATH?.trim() ?: ''
+            def serviceDir = 'app'
 
-            def serviceDir = servicePath
-                ? "app/${servicePath}"
-                : "app"
-
-            def analyzer =
-                "${env.WORKSPACE}\\services\\project-analyzer.js"
-
-            if (!fileExists(analyzer)) {
-                error(
-                    "Project analyzer not found: ${analyzer}"
-                )
+            if (params.SERVICE_PATH?.trim()) {
+                serviceDir = "app\\${params.SERVICE_PATH.trim().replace('/', '\\')}"
             }
 
             if (!fileExists(serviceDir)) {
-                error(
-                    "Service directory does not exist: ${serviceDir}"
-                )
+                error "Service directory does not exist: ${serviceDir}"
             }
 
-            echo "Running DeployFlow Project Analyzer..."
             echo "Analyzing: ${serviceDir}"
 
-            def analysisOutput = bat(
-                script:
-                    "node \"${analyzer}\" \"${serviceDir}\"",
-                returnStdout:
-                    true
+            def analyzerOutput = bat(
+                script: "node \"${env.WORKSPACE}\\services\\project-analyzer.js\" \"${serviceDir}\"",
+                returnStdout: true
             ).trim()
 
             echo "Analyzer Output:"
-            echo analysisOutput
+            echo analyzerOutput
 
-            def jsonStart =
-                analysisOutput.indexOf("{")
+            def jsonStart = analyzerOutput.indexOf('{')
 
             if (jsonStart < 0) {
-                error(
-                    "Project analyzer did not return valid JSON."
-                )
+                error "Analyzer did not return valid JSON"
             }
 
-            def json =
-                analysisOutput.substring(jsonStart)
+            def json = analyzerOutput.substring(jsonStart)
 
             writeFile(
                 file: 'analysis.json',
@@ -172,103 +154,84 @@ pipeline {
             )
 
             bat '''
-            node -e "const fs=require('fs'); const a=JSON.parse(fs.readFileSync('analysis.json','utf8')); const lines=['PROJECT_TYPE='+String(a.type||''),'FRAMEWORK='+String(a.framework||''),'PACKAGE_MANAGER='+String(a.packageManager||''),'BUILD_COMMAND='+String(a.buildCommand||''),'START_COMMAND='+String(a.startCommand||''),'PORT='+String(a.port||3000),'HEALTH_PATH='+String(a.healthPath||'/'),'IS_STATIC='+(a.isStatic?'true':'false'),'OUTPUT_DIRECTORY='+String(a.outputDirectory||''),'EXISTING_DOCKERFILE='+(a.existingDockerfile?'true':'false')]; fs.writeFileSync('analysis.properties',lines.join('\\n'));"
-            '''
+node -e "const fs=require('fs'); const a=JSON.parse(fs.readFileSync('analysis.json','utf8')); const lines=['PROJECT_TYPE='+String(a.type||''),'FRAMEWORK='+String(a.framework||''),'PACKAGE_MANAGER='+String(a.packageManager||''),'BUILD_COMMAND='+String(a.buildCommand||''),'START_COMMAND='+String(a.startCommand||''),'PORT='+String(a.port||3000),'HEALTH_PATH='+String(a.healthPath||'/'),'IS_STATIC='+(a.isStatic?'true':'false'),'OUTPUT_DIRECTORY='+String(a.outputDirectory||''),'EXISTING_DOCKERFILE='+(a.existingDockerfile?'true':'false')]; fs.writeFileSync('analysis.properties',lines.join('\\n'));"
+'''
 
             echo "Generated analysis.properties"
 
-            def properties =
-                readFile(
-                    file: 'analysis.properties'
-                ).trim()
-
             echo "Analysis Properties:"
-            echo properties
-
-            def analysisValues = [:]
-
-            properties
-                .split("\\r?\\n")
-                .each { line ->
-
-                    def separator =
-                        line.indexOf("=")
-
-                    if (separator > 0) {
-
-                        def key =
-                            line.substring(
-                                0,
-                                separator
-                            ).trim()
-
-                        def value =
-                            line.substring(
-                                separator + 1
-                            ).trim()
-
-                        analysisValues[key] =
-                            value
-                    }
-                }
+            bat 'type analysis.properties'
 
             /*
-             * Use explicit map-key access instead of
-             * Groovy property access.
+             * Read each value directly using Node.
+             * This avoids Groovy JSON parsing and Groovy map issues.
              */
 
-            env.PROJECT_TYPE =
-                analysisValues['PROJECT_TYPE'] ?: ''
+            env.PROJECT_TYPE = bat(
+                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'PROJECT_TYPE=\')); console.log(x.substring(13));"',
+                returnStdout: true
+            ).trim()
 
-            env.FRAMEWORK =
-                analysisValues['FRAMEWORK'] ?: ''
+            env.FRAMEWORK = bat(
+                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'FRAMEWORK=\')); console.log(x.substring(10));"',
+                returnStdout: true
+            ).trim()
 
-            env.PACKAGE_MANAGER =
-                analysisValues['PACKAGE_MANAGER'] ?: ''
+            env.PACKAGE_MANAGER = bat(
+                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'PACKAGE_MANAGER=\')); console.log(x.substring(16));"',
+                returnStdout: true
+            ).trim()
 
-            env.BUILD_COMMAND =
-                analysisValues['BUILD_COMMAND'] ?: ''
+            env.BUILD_COMMAND = bat(
+                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'BUILD_COMMAND=\')); console.log(x.substring(14));"',
+                returnStdout: true
+            ).trim()
 
-            env.START_COMMAND =
-                analysisValues['START_COMMAND'] ?: ''
+            env.START_COMMAND = bat(
+                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'START_COMMAND=\')); console.log(x.substring(14));"',
+                returnStdout: true
+            ).trim()
 
-            env.PORT =
-                analysisValues['PORT'] ?: '3000'
+            env.PORT = bat(
+                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'PORT=\')); console.log(x.substring(5));"',
+                returnStdout: true
+            ).trim()
 
-            env.HEALTH_PATH =
-                analysisValues['HEALTH_PATH'] ?: '/'
+            env.HEALTH_PATH = bat(
+                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'HEALTH_PATH=\')); console.log(x.substring(12));"',
+                returnStdout: true
+            ).trim()
 
-            env.IS_STATIC =
-                analysisValues['IS_STATIC'] ?: 'false'
+            env.IS_STATIC = bat(
+                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'IS_STATIC=\')); console.log(x.substring(10));"',
+                returnStdout: true
+            ).trim()
 
-            env.OUTPUT_DIRECTORY =
-                analysisValues['OUTPUT_DIRECTORY'] ?: ''
+            env.OUTPUT_DIRECTORY = bat(
+                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'OUTPUT_DIRECTORY=\')); console.log(x.substring(17));"',
+                returnStdout: true
+            ).trim()
 
-            env.EXISTING_DOCKERFILE =
-                analysisValues['EXISTING_DOCKERFILE'] ?: 'false'
-
-            writeFile(
-                file:
-                    "${serviceDir}/.deployflow-analysis.json",
-                text:
-                    json
-            )
+            env.EXISTING_DOCKERFILE = bat(
+                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'EXISTING_DOCKERFILE=\')); console.log(x.substring(20));"',
+                returnStdout: true
+            ).trim()
 
             echo """
 ==============================
  DeployFlow Project Analysis
 ==============================
 Project Type:        ${env.PROJECT_TYPE}
-Framework:           ${env.FRAMEWORK}
-Package Manager:     ${env.PACKAGE_MANAGER}
-Build Command:       ${env.BUILD_COMMAND}
-Start Command:       ${env.START_COMMAND}
-Port:                ${env.PORT}
-Health Path:         ${env.HEALTH_PATH}
-Static Application:  ${env.IS_STATIC}
-Output Directory:    ${env.OUTPUT_DIRECTORY}
-Existing Dockerfile: ${env.EXISTING_DOCKERFILE}
-Service Path:        ${servicePath ?: '(repository root)'}
+Framework:            ${env.FRAMEWORK}
+Package Manager:      ${env.PACKAGE_MANAGER}
+Build Command:        ${env.BUILD_COMMAND}
+Start Command:        ${env.START_COMMAND}
+Port:                 ${env.PORT}
+Health Path:          ${env.HEALTH_PATH}
+Static Application:   ${env.IS_STATIC}
+Output Directory:     ${env.OUTPUT_DIRECTORY}
+Existing Dockerfile:  ${env.EXISTING_DOCKERFILE}
+Service Path:         ${params.SERVICE_PATH?.trim() ?: '(repository root)'}
 ==============================
 """
         }
