@@ -118,142 +118,143 @@ pipeline {
         }
 
         stage('Analyze Project') {
-            steps {
-                script {
-                    def servicePath = params.SERVICE_PATH?.trim() ?: ''
+    steps {
+        script {
+            def servicePath = params.SERVICE_PATH?.trim() ?: ''
 
-                    def serviceDir = servicePath
-                        ? "app/${servicePath}"
-                        : "app"
+            def serviceDir = servicePath
+                ? "app/${servicePath}"
+                : "app"
 
-                    def analyzer =
-                        "${env.WORKSPACE}\\services\\project-analyzer.js"
+            def analyzer =
+                "${env.WORKSPACE}\\services\\project-analyzer.js"
 
-                    if (!fileExists(analyzer)) {
-                        error(
-                            "Project analyzer not found: ${analyzer}"
-                        )
+            if (!fileExists(analyzer)) {
+                error(
+                    "Project analyzer not found: ${analyzer}"
+                )
+            }
+
+            if (!fileExists(serviceDir)) {
+                error(
+                    "Service directory does not exist: ${serviceDir}"
+                )
+            }
+
+            echo "Running DeployFlow Project Analyzer..."
+            echo "Analyzing: ${serviceDir}"
+
+            def analysisOutput = bat(
+                script:
+                    "node \"${analyzer}\" \"${serviceDir}\"",
+                returnStdout:
+                    true
+            ).trim()
+
+            echo "Analyzer Output:"
+            echo analysisOutput
+
+            def jsonStart =
+                analysisOutput.indexOf("{")
+
+            if (jsonStart < 0) {
+                error(
+                    "Project analyzer did not return valid JSON."
+                )
+            }
+
+            def json =
+                analysisOutput.substring(jsonStart)
+
+            writeFile(
+                file: 'analysis.json',
+                text: json
+            )
+
+            bat '''
+            node -e "const fs=require('fs'); const a=JSON.parse(fs.readFileSync('analysis.json','utf8')); const lines=['PROJECT_TYPE='+String(a.type||''),'FRAMEWORK='+String(a.framework||''),'PACKAGE_MANAGER='+String(a.packageManager||''),'BUILD_COMMAND='+String(a.buildCommand||''),'START_COMMAND='+String(a.startCommand||''),'PORT='+String(a.port||3000),'HEALTH_PATH='+String(a.healthPath||'/'),'IS_STATIC='+(a.isStatic?'true':'false'),'OUTPUT_DIRECTORY='+String(a.outputDirectory||''),'EXISTING_DOCKERFILE='+(a.existingDockerfile?'true':'false')]; fs.writeFileSync('analysis.properties',lines.join('\\n'));"
+            '''
+
+            echo "Generated analysis.properties"
+
+            def properties =
+                readFile(
+                    file: 'analysis.properties'
+                ).trim()
+
+            echo "Analysis Properties:"
+            echo properties
+
+            def analysisValues = [:]
+
+            properties
+                .split("\\r?\\n")
+                .each { line ->
+
+                    def separator =
+                        line.indexOf("=")
+
+                    if (separator > 0) {
+
+                        def key =
+                            line.substring(
+                                0,
+                                separator
+                            ).trim()
+
+                        def value =
+                            line.substring(
+                                separator + 1
+                            ).trim()
+
+                        analysisValues[key] =
+                            value
                     }
+                }
 
-                    if (!fileExists(serviceDir)) {
-                        error(
-                            "Service directory does not exist: ${serviceDir}"
-                        )
-                    }
+            /*
+             * Use explicit map-key access instead of
+             * Groovy property access.
+             */
 
-                    echo "Running DeployFlow Project Analyzer..."
-                    echo "Analyzing: ${serviceDir}"
+            env.PROJECT_TYPE =
+                analysisValues['PROJECT_TYPE'] ?: ''
 
-                    def analysisOutput = bat(
-                        script:
-                            "node \"${analyzer}\" \"${serviceDir}\"",
-                        returnStdout:
-                            true
-                    ).trim()
+            env.FRAMEWORK =
+                analysisValues['FRAMEWORK'] ?: ''
 
-                    echo "Analyzer Output:"
-                    echo analysisOutput
+            env.PACKAGE_MANAGER =
+                analysisValues['PACKAGE_MANAGER'] ?: ''
 
-                    def jsonStart =
-                        analysisOutput.indexOf("{")
+            env.BUILD_COMMAND =
+                analysisValues['BUILD_COMMAND'] ?: ''
 
-                    if (jsonStart < 0) {
-                        error(
-                            "Project analyzer did not return valid JSON."
-                        )
-                    }
+            env.START_COMMAND =
+                analysisValues['START_COMMAND'] ?: ''
 
-                    def json =
-                        analysisOutput.substring(jsonStart)
+            env.PORT =
+                analysisValues['PORT'] ?: '3000'
 
-                    /*
-                     * Do not use JsonSlurper here.
-                     *
-                     * Jenkins sandbox blocks Groovy JSON parsing.
-                     * Node.js is already installed on the Jenkins agent,
-                     * so Node parses the analyzer JSON and writes simple
-                     * key=value values for Jenkins to read.
-                     */
+            env.HEALTH_PATH =
+                analysisValues['HEALTH_PATH'] ?: '/'
 
-                    writeFile(
-                        file: 'analysis.json',
-                        text: json
-                    )
+            env.IS_STATIC =
+                analysisValues['IS_STATIC'] ?: 'false'
 
-                    bat '''
-                    node -e "const fs=require('fs'); const a=JSON.parse(fs.readFileSync('analysis.json','utf8')); const lines=['PROJECT_TYPE='+String(a.type||''),'FRAMEWORK='+String(a.framework||''),'PACKAGE_MANAGER='+String(a.packageManager||''),'BUILD_COMMAND='+String(a.buildCommand||''),'START_COMMAND='+String(a.startCommand||''),'PORT='+String(a.port||3000),'HEALTH_PATH='+String(a.healthPath||'/'),'IS_STATIC='+(a.isStatic?'true':'false'),'OUTPUT_DIRECTORY='+String(a.outputDirectory||''),'EXISTING_DOCKERFILE='+(a.existingDockerfile?'true':'false')]; fs.writeFileSync('analysis.properties',lines.join('\\n'));"
-                    '''
+            env.OUTPUT_DIRECTORY =
+                analysisValues['OUTPUT_DIRECTORY'] ?: ''
 
-                    def properties =
-                        readFile(
-                            file: 'analysis.properties'
-                        ).trim()
+            env.EXISTING_DOCKERFILE =
+                analysisValues['EXISTING_DOCKERFILE'] ?: 'false'
 
-                    def analysisValues = [:]
+            writeFile(
+                file:
+                    "${serviceDir}/.deployflow-analysis.json",
+                text:
+                    json
+            )
 
-                    properties
-                        .split("\\r?\\n")
-                        .each { line ->
-
-                            def separator =
-                                line.indexOf("=")
-
-                            if (separator > 0) {
-
-                                def key =
-                                    line.substring(
-                                        0,
-                                        separator
-                                    )
-
-                                def value =
-                                    line.substring(
-                                        separator + 1
-                                    )
-
-                                analysisValues[key] =
-                                    value
-                            }
-                        }
-
-                    env.PROJECT_TYPE =
-                        analysisValues.PROJECT_TYPE ?: ''
-
-                    env.FRAMEWORK =
-                        analysisValues.FRAMEWORK ?: ''
-
-                    env.PACKAGE_MANAGER =
-                        analysisValues.PACKAGE_MANAGER ?: ''
-
-                    env.BUILD_COMMAND =
-                        analysisValues.BUILD_COMMAND ?: ''
-
-                    env.START_COMMAND =
-                        analysisValues.START_COMMAND ?: ''
-
-                    env.PORT =
-                        analysisValues.PORT ?: '3000'
-
-                    env.HEALTH_PATH =
-                        analysisValues.HEALTH_PATH ?: '/'
-
-                    env.IS_STATIC =
-                        analysisValues.IS_STATIC ?: 'false'
-
-                    env.OUTPUT_DIRECTORY =
-                        analysisValues.OUTPUT_DIRECTORY ?: ''
-
-                    env.EXISTING_DOCKERFILE =
-                        analysisValues.EXISTING_DOCKERFILE ?: 'false'
-
-                    writeFile(
-                        file:
-                            "${serviceDir}/.deployflow-analysis.json",
-                        text:
-                            json
-                    )
-
-                    echo """
+            echo """
 ==============================
  DeployFlow Project Analysis
 ==============================
@@ -270,9 +271,9 @@ Existing Dockerfile: ${env.EXISTING_DOCKERFILE}
 Service Path:        ${servicePath ?: '(repository root)'}
 ==============================
 """
-                }
-            }
         }
+    }
+}
 
         stage('Install Dependencies') {
             steps {
