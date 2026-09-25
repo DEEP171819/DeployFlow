@@ -21,8 +21,43 @@
 
 <div class="container">
 
-```
-<h2>Dashboard</h2>
+    <div class="card">
+
+        <h2>Deploy New Application</h2>
+
+        <form id="deploy-form">
+
+            <input
+                type="text"
+                id="app-name"
+                placeholder="Application Name"
+                required
+            >
+
+            <input
+                type="url"
+                id="repository"
+                placeholder="Git Repository URL"
+                required
+            >
+
+            <input
+                type="text"
+                id="branch"
+                placeholder="Branch"
+                value="main"
+                required
+            >
+
+            <button type="submit">
+                Deploy Application
+            </button>
+
+        </form>
+
+    </div>
+
+    <h2>Dashboard</h2>
 
 <div class="cards">
 
@@ -81,11 +116,10 @@
 
 <div class="card activity">
 
-    <h2>Recent Activity</h2>
+    <h2>Deployment History</h2>
 
-    <ul id="activity-list">
-        <li>Dashboard initialized</li>
-        <li>Waiting for deployment information...</li>
+    <ul id="deployment-history">
+        <li>Loading...</li>
     </ul>
 
 </div>

@@ -89,6 +89,7 @@ async function loadDashboard() {
     await loadHealth();
     await loadDeploymentStatus();
     await loadBuildStatus();
+    await loadBuildHistory();
 }
 
 async function loadBuildStatus() {
@@ -129,3 +130,42 @@ async function loadBuildStatus() {
 loadDashboard();
 
 setInterval(loadDashboard, 5000);
+
+document.getElementById("deploy-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const name = document.getElementById("app-name").value.trim();
+    const repository = document.getElementById("repository").value.trim();
+    const branch = document.getElementById("branch").value.trim();
+
+    try {
+        const response = await fetch("/api/applications", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                name,
+                repository,
+                branch
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.message || "Application creation failed");
+        }
+
+        alert(`Application "${data.application.name}" created successfully`);
+
+        document.getElementById("deploy-form").reset();
+
+        document.getElementById("branch").value = "main";
+
+    } catch (error) {
+        console.error("Application deployment error:", error);
+
+        alert(error.message);
+    }
+});

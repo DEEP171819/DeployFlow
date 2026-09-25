@@ -1,12 +1,17 @@
 apiVersion: v1
+
 kind: Service
+
 metadata:
-  name: deployflow-service
+  name: APP_ID-service
+
 spec:
   selector:
-    app: deployflow
+    app: APP_ID
+
   ports:
     - protocol: TCP
       port: 3000
       targetPort: 3000
+
   type: NodePort
