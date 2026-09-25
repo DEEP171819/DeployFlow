@@ -54,7 +54,6 @@ pipeline {
 
     environment {
         DOCKER_USERNAME = 'deepak97813'
-        DOCKER_IMAGE = ''
         ANALYSIS_FILE = 'deployflow-env.properties'
     }
 
@@ -614,81 +613,63 @@ CMD ["java", "-jar", "app.jar"]
         }
 
         stage('Build Docker Image') {
-            steps {
-                script {
+    steps {
+        script {
 
-                    def analysisText =
-                        readFile(
-                            file: 'deployflow-env.properties'
-                        ).trim()
+            def serviceDir = 'app'
 
-                    def analysis = [:]
-
-                    analysisText.readLines().each { line ->
-
-                        def separator =
-                            line.indexOf('=')
-
-                        if (separator > 0) {
-
-                            def key =
-                                line.substring(
-                                    0,
-                                    separator
-                                ).trim()
-
-                            def value =
-                                line.substring(
-                                    separator + 1
-                                ).trim()
-
-                            analysis[key] = value
-                        }
-                    }
-
-                    def serviceDir = 'app'
-
-                    if (params.SERVICE_PATH?.trim()) {
-                        serviceDir =
-                            "app\\${params.SERVICE_PATH.trim().replace('/', '\\')}"
-                    }
-
-                    env.DOCKER_IMAGE =
-                        "${env.DOCKER_USERNAME}/${params.APP_ID}:${env.BUILD_NUMBER}"
-
-                    echo "Building Docker image:"
-                    echo env.DOCKER_IMAGE
-
-                    dir(serviceDir) {
-
-                        bat(
-                            "docker build -t ${env.DOCKER_IMAGE} ."
-                        )
-                    }
-                }
+            if (params.SERVICE_PATH?.trim()) {
+                serviceDir =
+                    "app\\${params.SERVICE_PATH.trim().replace('/', '\\')}"
             }
+
+            def dockerImage =
+                "deepak97813/${params.APP_ID}:${env.BUILD_NUMBER}"
+
+            echo "Building Docker image:"
+            echo dockerImage
+
+            dir(serviceDir) {
+
+                bat(
+                    "docker build -t ${dockerImage} ."
+                )
+            }
+
+            echo "Docker image built successfully:"
+            echo dockerImage
         }
+    }
+}
 
         stage('Push Docker Image') {
-            steps {
-                script {
+    steps {
+        script {
 
-                    if (!env.DOCKER_IMAGE?.trim()) {
-                        error "Docker image name is empty"
-                    }
+            def dockerImage =
+                "deepak97813/${params.APP_ID}:${env.BUILD_NUMBER}"
 
-                    echo "Pushing image: ${env.DOCKER_IMAGE}"
+            echo "Pushing Docker image:"
+            echo dockerImage
 
-                    bat(
-                        "docker login -u ${env.DOCKER_USERNAME} -p \"${params.DOCKER_PASSWORD}\""
-                    )
-
-                    bat(
-                        "docker push ${env.DOCKER_IMAGE}"
-                    )
-                }
+            if (!params.DOCKER_PASSWORD?.trim()) {
+                error "Docker Hub password/token was not provided"
             }
+
+            bat(
+                script:
+                    "echo \"${params.DOCKER_PASSWORD}\" | docker login -u \"deepak97813\" --password-stdin"
+            )
+
+            bat(
+                "docker push ${dockerImage}"
+            )
+
+            echo "Docker image pushed successfully:"
+            echo dockerImage
         }
+    }
+}
 
         stage('Prepare Kubernetes Manifest') {
             steps {
@@ -954,7 +935,7 @@ Health Path:
     ${analysis['HEALTH_PATH']}
 
 Docker Image:
-    ${env.DOCKER_IMAGE}
+    deepak97813/${params.APP_ID}:${env.BUILD_NUMBER}
 
 Kubernetes:
     Deployment: ${params.APP_ID}
