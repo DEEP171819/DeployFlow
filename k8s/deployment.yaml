@@ -20,9 +20,9 @@ spec:
 
           envFrom:
             - configMapRef:
-                name: deployflow-config
+                name: APP_ID-config
             - secretRef:
-                name: deployflow-secret
+                name: APP_ID-secret
 
           livenessProbe:
             httpGet:

@@ -1,8 +1,11 @@
 apiVersion: v1
+
 kind: ConfigMap
+
 metadata:
-  name: deployflow-config
+  name: APP_ID-config
+
 data:
   NODE_ENV: "production"
-  APP_NAME: "DeployFlow"
+  APP_NAME: "APP_NAME"
   PORT: "3000"
