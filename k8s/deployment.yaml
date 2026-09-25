@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: deployflow
+  name: APP_ID
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: deployflow
+      app: APP_ID
   template:
     metadata:
       labels:
-        app: deployflow
+        app: APP_ID
     spec:
       containers:
-        - name: deployflow
-          image: deepak97813/deployflow:IMAGE_TAG
+        - name: APP_ID
+          image: deepak97813/APP_ID:IMAGE_TAG
           ports:
             - containerPort: 3000
 
