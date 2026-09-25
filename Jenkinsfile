@@ -1,4 +1,3 @@
-```groovy
 pipeline {
     agent any
 
@@ -831,4 +830,3 @@ Deployment:         SUCCESSFUL
         }
     }
 }
-```
