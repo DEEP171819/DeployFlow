@@ -159,81 +159,65 @@ node -e "const fs=require('fs'); const a=JSON.parse(fs.readFileSync('analysis.js
 
             echo "Generated analysis.properties"
 
+            def propertiesText = readFile(
+                file: 'analysis.properties'
+            ).trim()
+
             echo "Analysis Properties:"
-            bat 'type analysis.properties'
+            echo propertiesText
 
             /*
-             * Read each value directly using Node.
-             * This avoids Groovy JSON parsing and Groovy map issues.
+             * Parse properties directly.
+             * No Groovy JSON parser.
+             * No Jenkins readJSON plugin.
+             * No separate bat command for every property.
              */
 
-            env.PROJECT_TYPE = bat(
-                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'PROJECT_TYPE=\')); console.log(x.substring(13));"',
-                returnStdout: true
-            ).trim()
+            def analysisValues = [:]
 
-            env.FRAMEWORK = bat(
-                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'FRAMEWORK=\')); console.log(x.substring(10));"',
-                returnStdout: true
-            ).trim()
+            propertiesText.readLines().each { line ->
+                def separator = line.indexOf('=')
 
-            env.PACKAGE_MANAGER = bat(
-                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'PACKAGE_MANAGER=\')); console.log(x.substring(16));"',
-                returnStdout: true
-            ).trim()
+                if (separator > 0) {
+                    def key = line.substring(0, separator).trim()
+                    def value = line.substring(separator + 1).trim()
 
-            env.BUILD_COMMAND = bat(
-                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'BUILD_COMMAND=\')); console.log(x.substring(14));"',
-                returnStdout: true
-            ).trim()
+                    analysisValues[key] = value
+                }
+            }
 
-            env.START_COMMAND = bat(
-                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'START_COMMAND=\')); console.log(x.substring(14));"',
-                returnStdout: true
-            ).trim()
-
-            env.PORT = bat(
-                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'PORT=\')); console.log(x.substring(5));"',
-                returnStdout: true
-            ).trim()
-
-            env.HEALTH_PATH = bat(
-                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'HEALTH_PATH=\')); console.log(x.substring(12));"',
-                returnStdout: true
-            ).trim()
-
-            env.IS_STATIC = bat(
-                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'IS_STATIC=\')); console.log(x.substring(10));"',
-                returnStdout: true
-            ).trim()
-
-            env.OUTPUT_DIRECTORY = bat(
-                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'OUTPUT_DIRECTORY=\')); console.log(x.substring(17));"',
-                returnStdout: true
-            ).trim()
-
-            env.EXISTING_DOCKERFILE = bat(
-                script: 'node -e "const fs=require(\'fs\'); const x=fs.readFileSync(\'analysis.properties\',\'utf8\').split(/\\r?\\n/).find(x=>x.startsWith(\'EXISTING_DOCKERFILE=\')); console.log(x.substring(20));"',
-                returnStdout: true
-            ).trim()
+            env.PROJECT_TYPE = analysisValues.get('PROJECT_TYPE', '')
+            env.FRAMEWORK = analysisValues.get('FRAMEWORK', '')
+            env.PACKAGE_MANAGER = analysisValues.get('PACKAGE_MANAGER', '')
+            env.BUILD_COMMAND = analysisValues.get('BUILD_COMMAND', '')
+            env.START_COMMAND = analysisValues.get('START_COMMAND', '')
+            env.PORT = analysisValues.get('PORT', '3000')
+            env.HEALTH_PATH = analysisValues.get('HEALTH_PATH', '/')
+            env.IS_STATIC = analysisValues.get('IS_STATIC', 'false')
+            env.OUTPUT_DIRECTORY = analysisValues.get('OUTPUT_DIRECTORY', '')
+            env.EXISTING_DOCKERFILE = analysisValues.get('EXISTING_DOCKERFILE', 'false')
 
             echo """
 ==============================
  DeployFlow Project Analysis
 ==============================
 Project Type:        ${env.PROJECT_TYPE}
-Framework:            ${env.FRAMEWORK}
-Package Manager:      ${env.PACKAGE_MANAGER}
-Build Command:        ${env.BUILD_COMMAND}
-Start Command:        ${env.START_COMMAND}
-Port:                 ${env.PORT}
-Health Path:          ${env.HEALTH_PATH}
-Static Application:   ${env.IS_STATIC}
-Output Directory:     ${env.OUTPUT_DIRECTORY}
-Existing Dockerfile:  ${env.EXISTING_DOCKERFILE}
-Service Path:         ${params.SERVICE_PATH?.trim() ?: '(repository root)'}
+Framework:           ${env.FRAMEWORK}
+Package Manager:     ${env.PACKAGE_MANAGER}
+Build Command:       ${env.BUILD_COMMAND}
+Start Command:       ${env.START_COMMAND}
+Port:                ${env.PORT}
+Health Path:         ${env.HEALTH_PATH}
+Static Application:  ${env.IS_STATIC}
+Output Directory:    ${env.OUTPUT_DIRECTORY}
+Existing Dockerfile: ${env.EXISTING_DOCKERFILE}
+Service Path:        ${params.SERVICE_PATH?.trim() ?: '(repository root)'}
 ==============================
 """
+
+            if (!env.PROJECT_TYPE?.trim()) {
+                error "Project analyzer returned an empty project type"
+            }
         }
     }
 }
