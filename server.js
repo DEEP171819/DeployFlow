@@ -15,6 +15,37 @@ const JENKINS_URL = "http://localhost:8080";
 const JENKINS_USER = process.env.JENKINS_USER;
 const JENKINS_API_TOKEN = process.env.JENKINS_API_TOKEN;
 
+function updateApplicationStatus(appId, status, buildNumber = null) {
+    const applications = JSON.parse(
+        fs.readFileSync(APPLICATIONS_FILE, "utf-8")
+    );
+
+    const application = applications.find(
+        app => app.id === appId
+    );
+
+    if (!application) {
+        return;
+    }
+
+    application.status = status;
+
+    if (buildNumber !== null) {
+        application.jenkinsBuild = buildNumber;
+    }
+
+    application.updatedAt = new Date().toISOString();
+
+    fs.writeFileSync(
+        APPLICATIONS_FILE,
+        JSON.stringify(applications, null, 4)
+    );
+
+    console.log(
+        `Application ${appId} status updated to ${status}`
+    );
+}
+
 app.get("/api/health", (req, res) => {
     res.json({
         status: "UP",
@@ -32,19 +63,20 @@ app.get("/api/deployment/status", async (req, res) => {
         } = require("./kubernetes");
 
         const namespace = "default";
+        const appId = req.query.appId || "deployflow";
 
         const deployment = await appsApi.readNamespacedDeployment({
-            name: "deployflow",
+            name: appId,
             namespace: namespace
         });
 
         const podList = await coreApi.listNamespacedPod({
             namespace: namespace,
-            labelSelector: "app=deployflow"
+            labelSelector: `app=${appId}`
         });
 
         const hpa = await autoscalingApi.readNamespacedHorizontalPodAutoscaler({
-            name: "deployflow",
+            name: appId,
             namespace: namespace
         });
 
@@ -61,24 +93,24 @@ app.get("/api/deployment/status", async (req, res) => {
                 image: deployment.spec?.template?.spec?.containers?.[0]?.image || "Unknown"
             },
 
-            pods: pods.map((pod) => ({
+            pods: pods.map(pod => ({
                 name: pod.metadata?.name,
                 status: pod.status?.phase || "Unknown"
             })),
 
             hpa: {
+                name: hpa.metadata?.name,
                 minReplicas: hpa.spec?.minReplicas || 0,
                 maxReplicas: hpa.spec?.maxReplicas || 0,
-                currentReplicas: hpa.status?.currentReplicas || 0,
-                desiredReplicas: hpa.status?.desiredReplicas || 0
+                currentReplicas: hpa.status?.currentReplicas || 0
             }
         });
 
     } catch (error) {
-        console.error("Kubernetes API error:", error);
+        console.error("Deployment status error:", error);
 
         res.status(500).json({
-            status: "ERROR",
+            status: "DOWN",
             message: error.message
         });
     }
@@ -168,6 +200,85 @@ app.get("/api/build/history", async (req, res) => {
     }
 });
 
+
+
+
+async function monitorJenkinsBuild(queueUrl, appId) {
+    const credentials = Buffer
+        .from(`${JENKINS_USER}:${JENKINS_API_TOKEN}`)
+        .toString("base64");
+
+    const headers = {
+        Authorization: `Basic ${credentials}`
+    };
+
+    try {
+        let buildNumber = null;
+
+        for (let i = 0; i < 30; i++) {
+            const queueResponse = await fetch(
+                `${queueUrl}api/json`,
+                { headers }
+            );
+
+            const queueData = await queueResponse.json();
+
+            if (queueData.cancelled) {
+                throw new Error("Jenkins build was cancelled");
+            }
+
+            if (queueData.executable) {
+                buildNumber = queueData.executable.number;
+                break;
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+
+        if (buildNumber === null) {
+            throw new Error("Jenkins build did not start");
+        }
+
+        updateApplicationStatus(appId, "BUILDING", buildNumber);
+
+        for (let i = 0; i < 180; i++) {
+            const buildResponse = await fetch(
+                `${JENKINS_URL}/job/DeployFlow-CI-CD/${buildNumber}/api/json`,
+                { headers }
+            );
+
+            const buildData = await buildResponse.json();
+
+            if (!buildData.building) {
+                if (buildData.result === "SUCCESS") {
+                    updateApplicationStatus(
+                        appId,
+                        "DEPLOYED",
+                        buildNumber
+                    );
+                } else {
+                    updateApplicationStatus(
+                        appId,
+                        "FAILED",
+                        buildNumber
+                    );
+                }
+
+                return;
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+
+        updateApplicationStatus(appId, "FAILED", buildNumber);
+
+    } catch (error) {
+        console.error("Jenkins monitoring error:", error);
+        updateApplicationStatus(appId, "FAILED");
+    }
+}
+
+
 app.post("/api/applications", async (req, res) => {
     try {
         const { name, repository, branch } = req.body;
@@ -183,12 +294,18 @@ app.post("/api/applications", async (req, res) => {
             fs.readFileSync(APPLICATIONS_FILE, "utf-8")
         );
 
+        const appId = name
+            .toLowerCase()
+            .replace(/[^a-z0-9-]/g, "-")
+            .replace(/-+/g, "-")
+            .replace(/^-|-$/g, "");
+
         const application = {
-            id: `app-${Date.now()}`,
+            id: appId,
             name,
             repository,
             branch,
-            status: "CREATED",
+            status: "DEPLOYING",
             createdAt: new Date().toISOString()
         };
 
@@ -199,17 +316,54 @@ app.post("/api/applications", async (req, res) => {
             JSON.stringify(applications, null, 4)
         );
 
-        res.status(201).json({
-            status: "CREATED",
-            application
+        const credentials = Buffer
+            .from(`${JENKINS_USER}:${JENKINS_API_TOKEN}`)
+            .toString("base64");
+
+        const params = new URLSearchParams({
+            REPOSITORY: repository,
+            BRANCH: branch,
+            APP_ID: appId,
+            APP_NAME: name
         });
 
+        const jenkinsResponse = await fetch(
+    `${JENKINS_URL}/job/DeployFlow-CI-CD/buildWithParameters?${params.toString()}`,
+    {
+        method: "POST",
+        headers: {
+            Authorization: `Basic ${credentials}`
+        }
+    }
+);
+
+if (!jenkinsResponse.ok) {
+    throw new Error(
+        `Jenkins returned status ${jenkinsResponse.status}`
+    );
+}
+
+const queueUrl = jenkinsResponse.headers.get("location");
+
+if (queueUrl) {
+    monitorJenkinsBuild(queueUrl, appId);
+} else {
+    console.warn("Jenkins queue URL was not returned");
+    updateApplicationStatus(appId, "FAILED");
+}
+
+res.status(201).json({
+    status: "DEPLOYMENT_STARTED",
+    application,
+    message: "Jenkins deployment started successfully"
+});
+
     } catch (error) {
-        console.error("Application creation error:", error);
+        console.error("Application deployment error:", error);
 
         res.status(500).json({
             status: "ERROR",
-            message: "Unable to create application"
+            message: error.message
         });
     }
 });
