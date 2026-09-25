@@ -150,7 +150,7 @@ stages {
 
                 def json = analysisOutput.substring(jsonStart)
 
-                def analysis = readJSON(text: json)
+                def analysis = new groovy.json.JsonSlurperClassic().parseText(json)
 
                 env.PROJECT_TYPE =
                     analysis.type ?: ''
