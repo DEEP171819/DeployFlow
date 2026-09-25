@@ -1009,12 +1009,13 @@ app.post(
         try {
 
             const {
-    name,
-    repository,
-    branch,
-    environmentVariables = {},
-    secrets = {}
-} = req.body;
+                name,
+                repository,
+                branch,
+                servicePath = "",
+                environmentVariables = {},
+                secrets = {}
+            } = req.body;
 
             if (
                 !name ||
@@ -1032,45 +1033,103 @@ app.post(
                 });
             }
 
+            /* =========================
+               SERVICE PATH VALIDATION
+            ========================= */
+
+            const normalizedServicePath =
+                String(servicePath)
+                    .trim()
+                    .replace(/\\/g, "/")
+                    .replace(/^\/+|\/+$/g, "");
+
             if (
-    typeof environmentVariables !== "object" ||
-    Array.isArray(environmentVariables) ||
-    typeof secrets !== "object" ||
-    Array.isArray(secrets)
-) {
-    return res.status(400).json({
-        status: "ERROR",
-        message:
-            "Environment variables and secrets must be objects"
-    });
-}
+                normalizedServicePath.includes("..") ||
+                normalizedServicePath.startsWith("/") ||
+                /^[A-Za-z]:/.test(
+                    normalizedServicePath
+                )
+            ) {
 
-const variableNameRegex =
-    /^[A-Za-z_][A-Za-z0-9_]*$/;
+                return res.status(400).json({
 
-for (
-    const key of Object.keys(environmentVariables)
-) {
-    if (!variableNameRegex.test(key)) {
-        return res.status(400).json({
-            status: "ERROR",
-            message:
-                `Invalid environment variable name: ${key}`
-        });
-    }
-}
+                    status:
+                        "ERROR",
 
-for (
-    const key of Object.keys(secrets)
-) {
-    if (!variableNameRegex.test(key)) {
-        return res.status(400).json({
-            status: "ERROR",
-            message:
-                `Invalid secret name: ${key}`
-        });
-    }
-}
+                    message:
+                        "Invalid service path"
+                });
+            }
+
+            /* =========================
+               ENVIRONMENT VALIDATION
+            ========================= */
+
+            if (
+                typeof environmentVariables !== "object" ||
+                Array.isArray(environmentVariables) ||
+                typeof secrets !== "object" ||
+                Array.isArray(secrets)
+            ) {
+
+                return res.status(400).json({
+
+                    status:
+                        "ERROR",
+
+                    message:
+                        "Environment variables and secrets must be objects"
+                });
+            }
+
+            const variableNameRegex =
+                /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+            for (
+                const key of Object.keys(
+                    environmentVariables
+                )
+            ) {
+
+                if (
+                    !variableNameRegex.test(
+                        key
+                    )
+                ) {
+
+                    return res.status(400).json({
+
+                        status:
+                            "ERROR",
+
+                        message:
+                            `Invalid environment variable name: ${key}`
+                    });
+                }
+            }
+
+            for (
+                const key of Object.keys(
+                    secrets
+                )
+            ) {
+
+                if (
+                    !variableNameRegex.test(
+                        key
+                    )
+                ) {
+
+                    return res.status(400).json({
+
+                        status:
+                            "ERROR",
+
+                        message:
+                            `Invalid secret name: ${key}`
+                    });
+                }
+            }
 
             const applications =
                 loadApplications();
@@ -1111,25 +1170,37 @@ for (
             }
 
             const application = {
-    id: appId,
-    name: name,
-    repository: repository,
-    branch: branch,
 
-    environmentVariables:
-        environmentVariables,
+                id:
+                    appId,
 
-    secrets:
-        secrets,
+                name:
+                    name,
 
-    status: "DEPLOYING",
+                repository:
+                    repository,
 
-    userId:
-        req.user.userId,
+                branch:
+                    branch,
 
-    createdAt:
-        new Date().toISOString()
-};
+                servicePath:
+                    normalizedServicePath,
+
+                environmentVariables:
+                    environmentVariables,
+
+                secrets:
+                    secrets,
+
+                status:
+                    "DEPLOYING",
+
+                userId:
+                    req.user.userId,
+
+                createdAt:
+                    new Date().toISOString()
+            };
 
             applications.push(
                 application
@@ -1147,49 +1218,54 @@ for (
                     .toString("base64");
 
             const params =
-    new URLSearchParams({
-        REPOSITORY:
-            repository,
+                new URLSearchParams({
 
-        BRANCH:
-            branch,
+                    REPOSITORY:
+                        repository,
 
-        APP_ID:
-            appId,
+                    BRANCH:
+                        branch,
 
-        APP_NAME:
-            name,
+                    SERVICE_PATH:
+                        normalizedServicePath,
 
-        ENV_VARS:
-            JSON.stringify(
-                environmentVariables
-            ),
+                    APP_ID:
+                        appId,
 
-        SECRETS:
-            JSON.stringify(
-                secrets
-            )
-    });
+                    APP_NAME:
+                        name,
+
+                    ENV_VARS:
+                        JSON.stringify(
+                            environmentVariables
+                        ),
+
+                    SECRETS:
+                        JSON.stringify(
+                            secrets
+                        )
+                });
 
             const jenkinsResponse =
-    await fetch(
-        `${JENKINS_URL}/job/DeployFlow-CI-CD/buildWithParameters`,
-        {
-            method:
-                "POST",
+                await fetch(
+                    `${JENKINS_URL}/job/DeployFlow-CI-CD/buildWithParameters`,
+                    {
+                        method:
+                            "POST",
 
-            headers: {
-                Authorization:
-                    `Basic ${credentials}`,
+                        headers: {
 
-                "Content-Type":
-                    "application/x-www-form-urlencoded"
-            },
+                            Authorization:
+                                `Basic ${credentials}`,
 
-            body:
-                params.toString()
-        }
-    );
+                            "Content-Type":
+                                "application/x-www-form-urlencoded"
+                        },
+
+                        body:
+                            params.toString()
+                    }
+                );
 
             if (!jenkinsResponse.ok) {
 
@@ -1369,6 +1445,7 @@ app.get(
                     `${JENKINS_URL}/job/DeployFlow-CI-CD/${application.jenkinsBuild}/consoleText`,
                     {
                         headers: {
+
                             Authorization:
                                 `Basic ${credentials}`
                         }
@@ -1643,29 +1720,33 @@ app.post(
                     .toString("base64");
 
             const params =
-    new URLSearchParams({
-        REPOSITORY:
-            application.repository,
+                new URLSearchParams({
 
-        BRANCH:
-            application.branch,
+                    REPOSITORY:
+                        application.repository,
 
-        APP_ID:
-            application.id,
+                    BRANCH:
+                        application.branch,
 
-        APP_NAME:
-            application.name,
+                    SERVICE_PATH:
+                        application.servicePath || "",
 
-        ENV_VARS:
-            JSON.stringify(
-                application.environmentVariables || {}
-            ),
+                    APP_ID:
+                        application.id,
 
-        SECRETS:
-            JSON.stringify(
-                application.secrets || {}
-            )
-    });
+                    APP_NAME:
+                        application.name,
+
+                    ENV_VARS:
+                        JSON.stringify(
+                            application.environmentVariables || {}
+                        ),
+
+                    SECRETS:
+                        JSON.stringify(
+                            application.secrets || {}
+                        )
+                });
 
             application.status =
                 "DEPLOYING";
@@ -1678,24 +1759,25 @@ app.post(
             );
 
             const jenkinsResponse =
-    await fetch(
-        `${JENKINS_URL}/job/DeployFlow-CI-CD/buildWithParameters`,
-        {
-            method:
-                "POST",
+                await fetch(
+                    `${JENKINS_URL}/job/DeployFlow-CI-CD/buildWithParameters`,
+                    {
+                        method:
+                            "POST",
 
-            headers: {
-                Authorization:
-                    `Basic ${credentials}`,
+                        headers: {
 
-                "Content-Type":
-                    "application/x-www-form-urlencoded"
-            },
+                            Authorization:
+                                `Basic ${credentials}`,
 
-            body:
-                params.toString()
-        }
-    );
+                            "Content-Type":
+                                "application/x-www-form-urlencoded"
+                        },
+
+                        body:
+                            params.toString()
+                    }
+                );
 
             if (!jenkinsResponse.ok) {
 
