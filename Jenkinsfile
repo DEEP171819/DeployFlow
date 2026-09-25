@@ -57,7 +57,7 @@ stage('Push Docker Image') {
         bat 'kubectl apply -f k8s\\secret.yaml'
         bat 'kubectl apply -f k8s\\deployment-rendered.yaml'
         bat 'kubectl annotate deployment/deployflow kubernetes.io/change-cause="Jenkins Build %BUILD_NUMBER%" --overwrite'
-        bat 'kubectl apply -f k8s\service-rendered.yaml'
+        bat 'kubectl apply -f k8s\\service-rendered.yaml'
         bat 'kubectl apply -f k8s\\hpa.yaml'
 
         script {
