@@ -2,3 +2,11 @@ node_modules/
 .env
 *.log
 k8s/deployment-rendered.yaml
+
+# Generated Kubernetes manifests
+k8s/*-rendered.yaml
+
+# Local application/user data
+data/applications.json
+data/applications-backup.json
+users.json

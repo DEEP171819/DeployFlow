@@ -2,60 +2,171 @@ $buildNumber = $env:BUILD_NUMBER
 $appId = $env:APP_ID
 $appName = $env:APP_NAME
 
+$envVarsJson = $env:ENV_VARS
+$secretsJson = $env:SECRETS
+
 Write-Host "Preparing Kubernetes manifests..."
 Write-Host "APP_ID: $appId"
 Write-Host "APP_NAME: $appName"
 Write-Host "BUILD_NUMBER: $buildNumber"
 
-$deploymentTemplate = Get-Content "k8s\deployment.yaml" -Raw
+# Parse environment variables
+try {
+    if ([string]::IsNullOrWhiteSpace($envVarsJson)) {
+        $environmentVariables = @{}
+    }
+    else {
+        $environmentVariables = $envVarsJson | ConvertFrom-Json
+    }
+}
+catch {
+    throw "Invalid ENV_VARS JSON: $($_.Exception.Message)"
+}
 
-$deploymentRendered = $deploymentTemplate `
-    -replace "APP_ID", $appId `
-    -replace "IMAGE_TAG", $buildNumber
+# Parse secrets
+try {
+    if ([string]::IsNullOrWhiteSpace($secretsJson)) {
+        $secrets = @{}
+    }
+    else {
+        $secrets = $secretsJson | ConvertFrom-Json
+    }
+}
+catch {
+    throw "Invalid SECRETS JSON: $($_.Exception.Message)"
+}
 
-Set-Content "k8s\deployment-rendered.yaml" $deploymentRendered
+# Reserved variables managed by DeployFlow
+$reservedVariables = @(
+    "NODE_ENV",
+    "APP_NAME",
+    "PORT"
+)
 
+# Create ConfigMap
+$configMapLines = @(
+    "apiVersion: v1"
+    "kind: ConfigMap"
+    "metadata:"
+    "  name: $appId-config"
+    "data:"
+    "  NODE_ENV: `"production`""
+    "  APP_NAME: `"$appName`""
+    "  PORT: `"3000`""
+)
 
-$serviceTemplate = Get-Content "k8s\service.yaml" -Raw
+foreach ($property in $environmentVariables.PSObject.Properties) {
 
-$serviceRendered = $serviceTemplate `
-    -replace "APP_ID", $appId
+    $key = $property.Name
+    $value = [string]$property.Value
 
-Set-Content "k8s\service-rendered.yaml" $serviceRendered
+    if ($reservedVariables -contains $key) {
+        throw "Environment variable '$key' is reserved by DeployFlow."
+    }
 
+    if ($key -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
+        throw "Invalid environment variable name: $key"
+    }
 
-$hpaTemplate = Get-Content "k8s\hpa.yaml" -Raw
+    $escapedValue = $value.Replace('\', '\\').Replace('"', '\"')
 
-$hpaRendered = $hpaTemplate `
-    -replace "APP_ID", $appId
+    $configMapLines += "  ${key}: `"$escapedValue`""
+}
 
-Set-Content "k8s\hpa-rendered.yaml" $hpaRendered
+$configMapLines |
+    Set-Content "k8s\configmap-rendered.yaml"
 
+# Create Secret
+$secretLines = @(
+    "apiVersion: v1"
+    "kind: Secret"
+    "metadata:"
+    "  name: $appId-secret"
+    "type: Opaque"
+    "stringData:"
+)
 
-$configMapTemplate = Get-Content "k8s\configmap.yaml" -Raw
+foreach ($property in $secrets.PSObject.Properties) {
 
-$configMapRendered = $configMapTemplate `
-    -replace "APP_ID", $appId `
-    -replace "APP_NAME", $appName
+    $key = $property.Name
+    $value = [string]$property.Value
 
-Set-Content "k8s\configmap-rendered.yaml" $configMapRendered
+    if ($key -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
+        throw "Invalid secret name: $key"
+    }
 
+    $escapedValue = $value.Replace('\', '\\').Replace('"', '\"')
 
-$secretTemplate = Get-Content "k8s\secret.yaml" -Raw
+    $secretLines += "  ${key}: `"$escapedValue`""
+}
 
-$secretRendered = $secretTemplate `
-    -replace "APP_ID", $appId
+$secretLines |
+    Set-Content "k8s\secret-rendered.yaml"
 
-Set-Content "k8s\secret-rendered.yaml" $secretRendered
+# Deployment
+$deploymentTemplate =
+    Get-Content "k8s\deployment.yaml" -Raw
 
+$deploymentRendered =
+    $deploymentTemplate `
+        -replace "APP_ID", $appId `
+        -replace "IMAGE_TAG", $buildNumber
+
+Set-Content `
+    "k8s\deployment-rendered.yaml" `
+    $deploymentRendered
+
+# Service
+$serviceTemplate =
+    Get-Content "k8s\service.yaml" -Raw
+
+$serviceRendered =
+    $serviceTemplate `
+        -replace "APP_ID", $appId
+
+Set-Content `
+    "k8s\service-rendered.yaml" `
+    $serviceRendered
+
+# HPA
+$hpaTemplate =
+    Get-Content "k8s\hpa.yaml" -Raw
+
+$hpaRendered =
+    $hpaTemplate `
+        -replace "APP_ID", $appId
+
+Set-Content `
+    "k8s\hpa-rendered.yaml" `
+    $hpaRendered
+
+# Ingress
+$ingressTemplate =
+    Get-Content "k8s\ingress.yaml" -Raw
+
+$ingressRendered =
+    $ingressTemplate `
+        -replace "APP_ID", $appId
+
+Set-Content `
+    "k8s\ingress-rendered.yaml" `
+    $ingressRendered
 
 Write-Host ""
 Write-Host "Generated Kubernetes manifests:"
-Get-ChildItem "k8s\*-rendered.yaml" | Select-Object Name
+Get-ChildItem "k8s\*-rendered.yaml" |
+    Select-Object Name
 
-$ingressTemplate = Get-Content "k8s\ingress.yaml" -Raw
+Write-Host ""
+Write-Host "Environment variables configured:"
+$environmentVariables.PSObject.Properties |
+    ForEach-Object {
+        Write-Host " - $($_.Name)"
+    }
 
-$ingressRendered = $ingressTemplate `
-    -replace "APP_ID", $appId
-
-Set-Content "k8s\ingress-rendered.yaml" $ingressRendered
+Write-Host ""
+Write-Host "Secrets configured:"
+$secrets.PSObject.Properties |
+    ForEach-Object {
+        Write-Host " - $($_.Name)"
+    }

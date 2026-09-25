@@ -1,12 +1,50 @@
-
 pipeline {
     agent any
+
+    parameters {
+        string(
+            name: 'REPOSITORY',
+            defaultValue: '',
+            description: 'Git repository URL'
+        )
+
+        string(
+            name: 'BRANCH',
+            defaultValue: 'main',
+            description: 'Git branch'
+        )
+
+        string(
+            name: 'APP_ID',
+            defaultValue: '',
+            description: 'Application ID'
+        )
+
+        string(
+            name: 'APP_NAME',
+            defaultValue: '',
+            description: 'Application name'
+        )
+
+        text(
+            name: 'ENV_VARS',
+            defaultValue: '{}',
+            description: 'Environment variables as JSON'
+        )
+
+        password(
+            name: 'SECRETS',
+            defaultValue: '{}',
+            description: 'Secrets as JSON'
+        )
+    }
 
     stages {
 
         stage('Checkout') {
             steps {
                 deleteDir()
+
                 git branch: params.BRANCH,
                     url: params.REPOSITORY
             }
@@ -32,13 +70,18 @@ pipeline {
 
         stage('Push Docker Image') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-credentials',
-                    usernameVariable: 'DOCKER_USERNAME',
-                    passwordVariable: 'DOCKER_PASSWORD'
-                )]) {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USERNAME',
+                        passwordVariable: 'DOCKER_PASSWORD'
+                    )
+                ]) {
+
                     bat 'docker login -u %DOCKER_USERNAME% -p %DOCKER_PASSWORD%'
+
                     bat 'docker push deepak97813/%APP_ID%:%BUILD_NUMBER%'
+
                     bat 'docker push deepak97813/%APP_ID%:latest'
                 }
             }
@@ -51,57 +94,81 @@ pipeline {
         }
 
         stage('Deploy to Kubernetes') {
-    steps {
-        bat 'kubectl apply -f k8s\\configmap-rendered.yaml'
-        bat 'kubectl apply -f k8s\\secret-rendered.yaml'
-        bat 'kubectl apply -f k8s\\deployment-rendered.yaml'
-        bat 'kubectl annotate deployment/%APP_ID% kubernetes.io/change-cause="Jenkins Build %BUILD_NUMBER%" --overwrite'
-        bat 'kubectl apply -f k8s\\service-rendered.yaml'
-        bat 'kubectl apply -f k8s\\hpa-rendered.yaml'
-        bat 'kubectl apply -f k8s\\ingress-rendered.yaml'
+            steps {
 
-        script {
-            try {
-                bat 'kubectl rollout status deployment/%APP_ID% --timeout=120s'
-            } catch (Exception e) {
-                echo 'Deployment failed. Rolling back to the previous revision...'
-                bat 'kubectl rollout undo deployment/%APP_ID%'
-                bat 'kubectl rollout status deployment/%APP_ID% --timeout=120s'
-                throw e
+                bat 'kubectl apply -f k8s\\configmap-rendered.yaml'
+
+                bat 'kubectl apply -f k8s\\secret-rendered.yaml'
+
+                bat 'kubectl apply -f k8s\\deployment-rendered.yaml'
+
+                bat 'kubectl annotate deployment/%APP_ID% kubernetes.io/change-cause="Jenkins Build %BUILD_NUMBER%" --overwrite'
+
+                bat 'kubectl apply -f k8s\\service-rendered.yaml'
+
+                bat 'kubectl apply -f k8s\\hpa-rendered.yaml'
+
+                bat 'kubectl apply -f k8s\\ingress-rendered.yaml'
+
+                script {
+                    try {
+
+                        bat 'kubectl rollout status deployment/%APP_ID% --timeout=120s'
+
+                    } catch (Exception e) {
+
+                        echo 'Deployment failed. Rolling back to the previous revision...'
+
+                        bat 'kubectl rollout undo deployment/%APP_ID%'
+
+                        bat 'kubectl rollout status deployment/%APP_ID% --timeout=120s'
+
+                        throw e
+                    }
+                }
             }
         }
-    }
-}
-              
 
         stage('Health Check') {
             steps {
+
                 bat 'kubectl get pods -l app=%APP_ID%'
+
                 bat 'kubectl get deployment %APP_ID%'
+
                 bat 'kubectl get service %APP_ID%-service'
+
                 bat 'kubectl get hpa %APP_ID%'
+
                 bat 'kubectl rollout status deployment/%APP_ID% --timeout=120s'
             }
         }
 
         stage('Deployment Verification') {
-    steps {
-        bat 'kubectl get pods -l app=%APP_ID% -o wide'
-        bat 'kubectl get hpa %APP_ID%'
+            steps {
 
-        script {
-            try {
-                bat 'kubectl top pods -l app=%APP_ID%'
-            } catch (Exception e) {
-                echo 'Metrics are not available yet. Deployment itself is healthy.'
+                bat 'kubectl get pods -l app=%APP_ID% -o wide'
+
+                bat 'kubectl get hpa %APP_ID%'
+
+                script {
+                    try {
+
+                        bat 'kubectl top pods -l app=%APP_ID%'
+
+                    } catch (Exception e) {
+
+                        echo 'Metrics are not available yet. Deployment itself is healthy.'
+                    }
+                }
             }
         }
-    }
-}
 
         stage('Deployment Summary') {
             steps {
+
                 script {
+
                     def image = bat(
                         script: 'kubectl get deployment %APP_ID% -o=jsonpath="{.spec.template.spec.containers[0].image}"',
                         returnStdout: true

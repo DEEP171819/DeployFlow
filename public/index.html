@@ -1,12 +1,16 @@
 <!DOCTYPE html>
 
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DeployFlow Dashboard</title>
 
 ```
+<meta charset="UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>DeployFlow Dashboard</title>
+
 <link rel="stylesheet" href="style.css">
 ```
 
@@ -15,72 +19,216 @@
 <body>
 
 <header>
-    <h1>DeployFlow</h1>
-    <p>Automated CI/CD and Application Deployment Platform</p>
+
+```
+<h1>DeployFlow</h1>
+
+<p>Automated CI/CD and Application Deployment Platform</p>
+```
+
 </header>
 
 <div class="container">
 
-    <div class="card">
+```
+<div class="card">
 
-        <h2>Deploy New Application</h2>
+    <h2>Deploy New Application</h2>
 
-        <form id="deploy-form">
+    <form id="deploy-form">
 
-            <input
-                type="text"
-                id="app-name"
-                placeholder="Application Name"
-                required
-            >
+        <input
+            type="text"
+            id="app-name"
+            placeholder="Application Name"
+            required
+        >
 
-            <input
-                type="url"
-                id="repository"
-                placeholder="Git Repository URL"
-                required
-            >
+        <input
+            type="url"
+            id="repository"
+            placeholder="Git Repository URL"
+            required
+        >
 
-            <input
-                type="text"
-                id="branch"
-                placeholder="Branch"
-                value="main"
-                required
-            >
+        <input
+            type="text"
+            id="branch"
+            placeholder="Branch"
+            value="main"
+            required
+        >
 
-            <button type="submit">
-                Deploy Application
-            </button>
+        <h3>Environment Variables</h3>
 
-        </form>
+        <div id="environment-variables">
 
+            <div class="env-row">
+
+                <input
+                    type="text"
+                    class="env-key"
+                    placeholder="KEY"
+                >
+
+                <input
+                    type="text"
+                    class="env-value"
+                    placeholder="VALUE"
+                >
+
+                <button
+                    type="button"
+                    class="remove-env-button"
+                >
+                    Remove
+                </button>
+
+            </div>
+
+        </div>
+
+        <button
+            type="button"
+            id="add-env-button"
+        >
+            + Add Environment Variable
+        </button>
+
+        <h3>Secrets</h3>
+
+        <div id="secrets">
+
+            <div class="secret-row">
+
+                <input
+                    type="text"
+                    class="secret-key"
+                    placeholder="SECRET_KEY"
+                >
+
+                <input
+                    type="password"
+                    class="secret-value"
+                    placeholder="SECRET_VALUE"
+                >
+
+                <button
+                    type="button"
+                    class="remove-secret-button"
+                >
+                    Remove
+                </button>
+
+            </div>
+
+        </div>
+
+        <button
+            type="button"
+            id="add-secret-button"
+        >
+            + Add Secret
+        </button>
+
+        <br><br>
+
+        <button type="submit">
+            Deploy Application
+        </button>
+
+    </form>
+
+</div>
+
+<div class="card">
+
+    <h2>Applications</h2>
+
+    <div id="applications-list">
+        Loading applications...
     </div>
 
-    <h2>Dashboard</h2>
+</div>
+
+<div class="card">
+
+    <h2>Select Application</h2>
+
+    <select id="application-selector">
+
+        <option value="">
+            Select an application
+        </option>
+
+    </select>
+
+</div>
+
+<h2>Dashboard</h2>
+
+<div class="card">
+
+    <h2>Deployment Actions</h2>
+
+    <button id="redeploy-button">
+        Redeploy Application
+    </button>
+
+    <button id="rollback-button">
+        Rollback Deployment
+    </button>
+
+</div>
 
 <div class="cards">
 
     <div class="card">
+
         <h3>Application Status</h3>
-        <p class="status" id="app-status">Checking...</p>
+
+        <p class="status" id="app-status">
+            Checking...
+        </p>
+
     </div>
 
     <div class="card">
+
         <h3>Build Status</h3>
-        <p class="status" id="build-status">Loading...</p>
-        <p id="build-number">Build #--</p>
-        <p id="build-duration">Duration: --</p>
+
+        <p class="status" id="build-status">
+            Loading...
+        </p>
+
+        <p id="build-number">
+            Build #--
+        </p>
+
+        <p id="build-duration">
+            Duration: --
+        </p>
+
     </div>
 
     <div class="card">
+
         <h3>Deployment Status</h3>
-        <p class="status" id="deployment-status">Checking...</p>
+
+        <p class="status" id="deployment-status">
+            Checking...
+        </p>
+
     </div>
 
     <div class="card">
+
         <h3>Version</h3>
-        <p class="status" id="version">Loading...</p>
+
+        <p class="status" id="version">
+            Loading...
+        </p>
+
     </div>
 
 </div>
@@ -88,18 +236,33 @@
 <div class="cards">
 
     <div class="card">
+
         <h3>Replicas</h3>
-        <p class="status" id="replicas">Loading...</p>
+
+        <p class="status" id="replicas">
+            Loading...
+        </p>
+
     </div>
 
     <div class="card">
+
         <h3>HPA</h3>
-        <p class="status" id="hpa">Loading...</p>
+
+        <p class="status" id="hpa">
+            Loading...
+        </p>
+
     </div>
 
     <div class="card">
+
         <h3>Docker Image</h3>
-        <p class="status" id="image">Loading...</p>
+
+        <p class="status" id="image">
+            Loading...
+        </p>
+
     </div>
 
 </div>
@@ -109,7 +272,9 @@
     <h2>Pods</h2>
 
     <ul id="pod-list">
+
         <li>Loading...</li>
+
     </ul>
 
 </div>
@@ -119,8 +284,18 @@
     <h2>Deployment History</h2>
 
     <ul id="deployment-history">
+
         <li>Loading...</li>
+
     </ul>
+
+</div>
+
+<div class="card activity">
+
+    <h2>Deployment Logs</h2>
+
+    <pre id="deployment-logs">Select an application to view logs.</pre>
 
 </div>
 ```
@@ -130,4 +305,5 @@
 <script src="script.js"></script>
 
 </body>
+
 </html>
