@@ -665,9 +665,6 @@ CMD ["java", "-jar", "app.jar"]
 
                         echo Docker username received: %DOCKER_USER%
 
-                        echo Logging out of Docker Hub...
-                        docker logout
-
                         echo Logging in to Docker Hub...
 
                         echo %DOCKER_PASSWORD% | docker login docker.io -u "%DOCKER_USER%" --password-stdin
