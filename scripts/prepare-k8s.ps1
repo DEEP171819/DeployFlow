@@ -2,6 +2,8 @@ $buildNumber = $env:BUILD_NUMBER
 $appId = $env:APP_ID
 $appName = $env:APP_NAME
 
+$dockerImage = $env:DOCKER_IMAGE
+
 $projectType = $env:PROJECT_TYPE
 $framework = $env:FRAMEWORK
 $port = $env:PORT
@@ -13,16 +15,22 @@ $envVarsJson = $env:ENV_VARS
 $secretsJson = $env:SECRETS
 
 Write-Host "Preparing Kubernetes manifests..."
+
 Write-Host "APP_ID: $appId"
 Write-Host "APP_NAME: $appName"
 Write-Host "BUILD_NUMBER: $buildNumber"
+Write-Host "DOCKER_IMAGE: $dockerImage"
 Write-Host "PROJECT_TYPE: $projectType"
 Write-Host "FRAMEWORK: $framework"
 Write-Host "PORT: $port"
 Write-Host "HEALTH_PATH: $healthPath"
 Write-Host "IS_STATIC: $isStatic"
 
+
+# ============================================================
 # Validate required deployment values
+# ============================================================
+
 if ([string]::IsNullOrWhiteSpace($appId)) {
     throw "APP_ID is required."
 }
@@ -34,6 +42,30 @@ if ([string]::IsNullOrWhiteSpace($appName)) {
 if ([string]::IsNullOrWhiteSpace($buildNumber)) {
     throw "BUILD_NUMBER is required."
 }
+
+if ([string]::IsNullOrWhiteSpace($dockerImage)) {
+    throw "DOCKER_IMAGE is required."
+}
+
+# Kubernetes resource names must be lowercase DNS-compatible names.
+$appId = $appId.ToLower()
+
+$appId = $appId -replace '[^a-z0-9-]', '-'
+$appId = $appId -replace '-+', '-'
+$appId = $appId.Trim('-')
+
+if ($appId.Length -gt 63) {
+    $appId = $appId.Substring(0, 63).TrimEnd('-')
+}
+
+if ([string]::IsNullOrWhiteSpace($appId)) {
+    throw "APP_ID became invalid after Kubernetes name sanitization."
+}
+
+
+# ============================================================
+# Port
+# ============================================================
 
 if ([string]::IsNullOrWhiteSpace($port)) {
     $port = "3000"
@@ -49,6 +81,11 @@ if ($portNumber -lt 1 -or $portNumber -gt 65535) {
     throw "PORT must be between 1 and 65535."
 }
 
+
+# ============================================================
+# Health path
+# ============================================================
+
 if ([string]::IsNullOrWhiteSpace($healthPath)) {
     $healthPath = "/"
 }
@@ -57,7 +94,6 @@ if (-not $healthPath.StartsWith("/")) {
     $healthPath = "/$healthPath"
 }
 
-# Prevent invalid Kubernetes/application paths
 if (
     $healthPath.Contains("`n") -or
     $healthPath.Contains("`r")
@@ -65,42 +101,68 @@ if (
     throw "Invalid HEALTH_PATH."
 }
 
+
+# ============================================================
 # Parse environment variables
+# ============================================================
+
 try {
+
     if ([string]::IsNullOrWhiteSpace($envVarsJson)) {
+
         $environmentVariables = @{}
-    }
-    else {
+
+    } else {
+
         $environmentVariables =
             $envVarsJson | ConvertFrom-Json
     }
+
 }
 catch {
+
     throw "Invalid ENV_VARS JSON: $($_.Exception.Message)"
 }
 
+
+# ============================================================
 # Parse secrets
+# ============================================================
+
 try {
+
     if ([string]::IsNullOrWhiteSpace($secretsJson)) {
+
         $secrets = @{}
-    }
-    else {
+
+    } else {
+
         $secrets =
             $secretsJson | ConvertFrom-Json
     }
+
 }
 catch {
+
     throw "Invalid SECRETS JSON: $($_.Exception.Message)"
 }
 
-# Reserved variables managed by DeployFlow
+
+# ============================================================
+# Reserved variables
+# ============================================================
+
 $reservedVariables = @(
     "NODE_ENV",
     "APP_NAME",
     "PORT"
 )
 
+
+# ============================================================
 # Create ConfigMap
+# ============================================================
+
 $configMapLines = @(
     "apiVersion: v1"
     "kind: ConfigMap"
@@ -118,10 +180,12 @@ foreach ($property in $environmentVariables.PSObject.Properties) {
     $value = [string]$property.Value
 
     if ($reservedVariables -contains $key) {
+
         throw "Environment variable '$key' is reserved by DeployFlow."
     }
 
     if ($key -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
+
         throw "Invalid environment variable name: $key"
     }
 
@@ -135,7 +199,11 @@ foreach ($property in $environmentVariables.PSObject.Properties) {
 $configMapLines |
     Set-Content "k8s\configmap-rendered.yaml"
 
+
+# ============================================================
 # Create Secret
+# ============================================================
+
 $secretLines = @(
     "apiVersion: v1"
     "kind: Secret"
@@ -151,6 +219,7 @@ foreach ($property in $secrets.PSObject.Properties) {
     $value = [string]$property.Value
 
     if ($key -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
+
         throw "Invalid secret name: $key"
     }
 
@@ -164,7 +233,11 @@ foreach ($property in $secrets.PSObject.Properties) {
 $secretLines |
     Set-Content "k8s\secret-rendered.yaml"
 
+
+# ============================================================
 # Deployment
+# ============================================================
+
 $deploymentTemplate =
     Get-Content "k8s\deployment.yaml" -Raw
 
@@ -173,13 +246,18 @@ $deploymentRendered =
         -replace "APP_ID", $appId `
         -replace "IMAGE_TAG", $buildNumber `
         -replace "APP_PORT", $portNumber `
-        -replace "HEALTH_PATH", $healthPath
+        -replace "HEALTH_PATH", $healthPath `
+        -replace "DOCKER_IMAGE", $dockerImage
 
 Set-Content `
     "k8s\deployment-rendered.yaml" `
     $deploymentRendered
 
+
+# ============================================================
 # Service
+# ============================================================
+
 $serviceTemplate =
     Get-Content "k8s\service.yaml" -Raw
 
@@ -192,7 +270,11 @@ Set-Content `
     "k8s\service-rendered.yaml" `
     $serviceRendered
 
+
+# ============================================================
 # HPA
+# ============================================================
+
 $hpaTemplate =
     Get-Content "k8s\hpa.yaml" -Raw
 
@@ -204,7 +286,11 @@ Set-Content `
     "k8s\hpa-rendered.yaml" `
     $hpaRendered
 
+
+# ============================================================
 # Ingress
+# ============================================================
+
 $ingressTemplate =
     Get-Content "k8s\ingress.yaml" -Raw
 
@@ -217,6 +303,11 @@ Set-Content `
     "k8s\ingress-rendered.yaml" `
     $ingressRendered
 
+
+# ============================================================
+# Output
+# ============================================================
+
 Write-Host ""
 Write-Host "Generated Kubernetes manifests:"
 
@@ -225,6 +316,10 @@ Get-ChildItem "k8s\*-rendered.yaml" |
 
 Write-Host ""
 Write-Host "Deployment configuration:"
+
+Write-Host " - Application ID: $appId"
+Write-Host " - Application Name: $appName"
+Write-Host " - Docker Image: $dockerImage"
 Write-Host " - Project Type: $projectType"
 Write-Host " - Framework: $framework"
 Write-Host " - Port: $portNumber"
@@ -247,3 +342,7 @@ $secrets.PSObject.Properties |
     ForEach-Object {
         Write-Host " - $($_.Name)"
     }
+
+Write-Host ""
+Write-Host "Kubernetes manifests prepared successfully."
+

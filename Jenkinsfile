@@ -3,6 +3,7 @@ pipeline {
     agent any
 
     parameters {
+
         string(
             name: 'REPOSITORY',
             defaultValue: '',
@@ -39,8 +40,6 @@ pipeline {
             description: 'Environment variables as JSON'
         )
 
-        
-
         text(
             name: 'SECRETS',
             defaultValue: '{}',
@@ -49,6 +48,7 @@ pipeline {
     }
 
     environment {
+
         DOCKER_USERNAME = 'deepak97813'
         ANALYSIS_FILE = 'deployflow-env.properties'
     }
@@ -56,8 +56,11 @@ pipeline {
     stages {
 
         stage('Checkout') {
+
             steps {
+
                 dir('app') {
+
                     deleteDir()
 
                     git(
@@ -68,8 +71,11 @@ pipeline {
             }
         }
 
+
         stage('Validate Service Path') {
+
             steps {
+
                 script {
 
                     def servicePath =
@@ -80,6 +86,7 @@ pipeline {
                     def serviceDir = 'app'
 
                     if (servicePath) {
+
                         serviceDir =
                             "app\\${servicePath.replace('/', '\\')}"
                     }
@@ -92,32 +99,43 @@ pipeline {
                         servicePath.startsWith('\\') ||
                         servicePath ==~ /^[A-Za-z]:.*/
                     ) {
+
                         error "Invalid service path"
                     }
 
                     if (!fileExists(serviceDir)) {
-                        error "Service directory does not exist: ${serviceDir}"
+
+                        error(
+                            "Service directory does not exist: ${serviceDir}"
+                        )
                     }
                 }
             }
         }
 
+
         stage('Analyze Project') {
+
             steps {
+
                 script {
 
                     def serviceDir = 'app'
 
                     if (params.SERVICE_PATH?.trim()) {
+
                         serviceDir =
                             "app\\${params.SERVICE_PATH.trim().replace('/', '\\')}"
                     }
 
                     if (!fileExists(serviceDir)) {
-                        error "Service directory does not exist: ${serviceDir}"
+
+                        error(
+                            "Service directory does not exist: ${serviceDir}"
+                        )
                     }
 
-                    echo "Analyzing: ${serviceDir}"
+                    echo "Analyzing repository/service: ${serviceDir}"
 
                     def analyzerOutput = bat(
                         script:
@@ -132,373 +150,518 @@ pipeline {
                         analyzerOutput.indexOf('{')
 
                     if (jsonStart < 0) {
-                        error "Analyzer did not return valid JSON"
+
+                        error(
+                            "Analyzer did not return valid JSON"
+                        )
                     }
 
                     def json =
                         analyzerOutput.substring(jsonStart)
 
                     writeFile(
-                        file: 'analysis.json',
+                        file: 'deployflow-repository-analysis.json',
                         text: json
                     )
 
-                    /*
-                     * Convert analyzer JSON into a simple
-                     * KEY=VALUE properties file.
-                     *
-                     * Node performs the JSON parsing so Jenkins
-                     * does not require readJSON or Groovy JSON
-                     * script approval.
-                     */
+                    def analysisType = bat(
+                        script:
+                            'node -e "const fs=require(\'fs\'); const a=JSON.parse(fs.readFileSync(\'deployflow-repository-analysis.json\',\'utf8\')); console.log(a.type||\'\');"',
+                        returnStdout: true
+                    ).trim()
 
-                    bat '''
-node -e "const fs=require('fs'); const a=JSON.parse(fs.readFileSync('analysis.json','utf8')); const lines=['PROJECT_TYPE='+String(a.type||''),'FRAMEWORK='+String(a.framework||''),'PACKAGE_MANAGER='+String(a.packageManager||''),'BUILD_COMMAND='+String(a.buildCommand||''),'START_COMMAND='+String(a.startCommand||''),'PORT='+String(a.port||3000),'HEALTH_PATH='+String(a.healthPath||'/'),'IS_STATIC='+(a.isStatic?'true':'false'),'OUTPUT_DIRECTORY='+String(a.outputDirectory||''),'EXISTING_DOCKERFILE='+(a.existingDockerfile?'true':'false')]; fs.writeFileSync('deployflow-env.properties',lines.join('\\n'));"
-'''
+                    def serviceCountText = bat(
+                        script:
+                            'node -e "const fs=require(\'fs\'); const a=JSON.parse(fs.readFileSync(\'deployflow-repository-analysis.json\',\'utf8\')); console.log((a.services||[]).length);"',
+                        returnStdout: true
+                    ).trim()
 
-                    def propertiesText =
-                        readFile(
-                            file: 'deployflow-env.properties'
-                        ).trim()
+                    def serviceCount =
+                        Integer.parseInt(serviceCountText)
 
-                    echo "Analysis Properties:"
-                    echo propertiesText
+                    if (serviceCount == 0) {
 
-                    /*
-                     * Parse KEY=VALUE pairs.
-                     */
-
-                    def analysis = [:]
-
-                    propertiesText.readLines().each { line ->
-
-                        def separator =
-                            line.indexOf('=')
-
-                        if (separator > 0) {
-
-                            def key =
-                                line.substring(
-                                    0,
-                                    separator
-                                ).trim()
-
-                            def value =
-                                line.substring(
-                                    separator + 1
-                                ).trim()
-
-                            analysis[key] = value
-                        }
+                        error(
+                            "No deployable services were detected."
+                        )
                     }
-
-                    /*
-                     * Validate analyzer result.
-                     */
-
-                    if (!analysis['PROJECT_TYPE']?.trim()) {
-                        error "Project analyzer returned an empty project type"
-                    }
-
-                    /*
-                     * Save analyzer JSON as well.
-                     */
-
-                    writeFile(
-                        file: '.deployflow-analysis.json',
-                        text: json
-                    )
 
                     echo """
-==============================
- DeployFlow Project Analysis
-==============================
-Project Type:        ${analysis['PROJECT_TYPE']}
-Framework:           ${analysis['FRAMEWORK']}
-Package Manager:     ${analysis['PACKAGE_MANAGER']}
-Build Command:       ${analysis['BUILD_COMMAND']}
-Start Command:       ${analysis['START_COMMAND']}
-Port:                ${analysis['PORT']}
-Health Path:         ${analysis['HEALTH_PATH']}
-Static Application:  ${analysis['IS_STATIC']}
-Output Directory:    ${analysis['OUTPUT_DIRECTORY']}
-Existing Dockerfile: ${analysis['EXISTING_DOCKERFILE']}
-Service Path:        ${params.SERVICE_PATH?.trim() ?: '(repository root)'}
-==============================
+========================================
+ DeployFlow Repository Analysis
+========================================
+Type:              ${analysisType}
+Detected Services: ${serviceCount}
+========================================
 """
 
-                    /*
-                     * Store the values in files rather than
-                     * relying on Jenkins env mutation.
-                     */
+                    bat '''
+node -e "const fs=require('fs'); const a=JSON.parse(fs.readFileSync('deployflow-repository-analysis.json','utf8')); console.log('Detected Services:'); (a.services||[]).forEach((s,i)=>{console.log('['+(i+1)+'] '+s.name+' | path='+s.path+' | type='+s.type+' | framework='+s.framework+' | port='+s.port+' | static='+s.isStatic);});"
+'''
+
+                    if (analysisType == 'single-service') {
+
+                        bat '''
+node -e "const fs=require('fs'); const a=JSON.parse(fs.readFileSync('deployflow-repository-analysis.json','utf8')); const s=a.services[0]; const lines=['PROJECT_TYPE='+String(s.type||''),'FRAMEWORK='+String(s.framework||''),'PACKAGE_MANAGER='+String(s.packageManager||''),'BUILD_COMMAND='+String(s.buildCommand||''),'START_COMMAND='+String(s.startCommand||''),'PORT='+String(s.port||3000),'HEALTH_PATH='+String(s.healthPath||'/'),'IS_STATIC='+(s.isStatic?'true':'false'),'OUTPUT_DIRECTORY='+String(s.outputDirectory||''),'EXISTING_DOCKERFILE='+(s.existingDockerfile?'true':'false'),'SERVICE_NAME='+String(s.name||'app'),'SERVICE_PATH='+String(s.path||'.')]; fs.writeFileSync('deployflow-env.properties',lines.join('\\n'));"
+'''
+
+                        def propertiesText =
+                            readFile(
+                                file: 'deployflow-env.properties'
+                            ).trim()
+
+                        writeFile(
+                            file: '.deployflow-analysis.json',
+                            text: json
+                        )
+
+                        writeFile(
+                            file: 'deployflow-analysis.env',
+                            text: propertiesText + '\n'
+                        )
+
+                        echo """
+========================================
+ DeployFlow Single-Service
+========================================
+${propertiesText}
+========================================
+"""
+
+                    } else if (analysisType == 'multi-service') {
+
+                        writeFile(
+                            file: '.deployflow-analysis.json',
+                            text: json
+                        )
+
+                        echo """
+========================================
+ DeployFlow Multi-Service Repository
+========================================
+Detected Services: ${serviceCount}
+
+The pipeline will process every detected
+service independently.
+========================================
+"""
+
+                    } else {
+
+                        error(
+                            "Unknown repository analysis type: ${analysisType}"
+                        )
+                    }
+                }
+            }
+        }
+
+
+        stage('Install Dependencies') {
+
+            steps {
+
+                script {
+
+                    if (!fileExists(
+                        'deployflow-repository-analysis.json'
+                    )) {
+
+                        error(
+                            "Repository analysis file not found."
+                        )
+                    }
+
+                    def servicesJson = bat(
+                        script:
+                            'node -e "const fs=require(\'fs\'); const a=JSON.parse(fs.readFileSync(\'deployflow-repository-analysis.json\',\'utf8\')); console.log(JSON.stringify(a.services||[]));"',
+                        returnStdout: true
+                    ).trim()
 
                     writeFile(
-                        file: 'deployflow-analysis.env',
-                        text: """PROJECT_TYPE=${analysis['PROJECT_TYPE']}
-FRAMEWORK=${analysis['FRAMEWORK']}
-PACKAGE_MANAGER=${analysis['PACKAGE_MANAGER']}
-BUILD_COMMAND=${analysis['BUILD_COMMAND']}
-START_COMMAND=${analysis['START_COMMAND']}
-PORT=${analysis['PORT']}
-HEALTH_PATH=${analysis['HEALTH_PATH']}
-IS_STATIC=${analysis['IS_STATIC']}
-OUTPUT_DIRECTORY=${analysis['OUTPUT_DIRECTORY']}
-EXISTING_DOCKERFILE=${analysis['EXISTING_DOCKERFILE']}
+                        file: 'deployflow-services.json',
+                        text: servicesJson
+                    )
+
+                    def serviceCountText = bat(
+                        script:
+                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                        returnStdout: true
+                    ).trim()
+
+                    def serviceCount =
+                        Integer.parseInt(serviceCountText)
+
+                    echo """
+========================================
+ Installing Dependencies
+ Services: ${serviceCount}
+========================================
 """
+
+                    for (int i = 0; i < serviceCount; i++) {
+
+                        def serviceName = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def servicePath = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def projectType = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def serviceDir =
+                            "app\\${servicePath.replace('/', '\\')}"
+
+                        echo """
+----------------------------------------
+Service: ${serviceName}
+Path:    ${servicePath}
+Type:    ${projectType}
+----------------------------------------
+"""
+
+                        if (!fileExists(serviceDir)) {
+
+                            error(
+                                "Service directory does not exist: ${serviceDir}"
+                            )
+                        }
+
+                        if (projectType == 'node') {
+
+                            dir(serviceDir) {
+
+                                bat 'npm install'
+                            }
+
+                        } else if (projectType == 'python') {
+
+                            dir(serviceDir) {
+
+                                if (fileExists('requirements.txt')) {
+
+                                    bat(
+                                        'python -m pip install -r requirements.txt'
+                                    )
+
+                                } else {
+
+                                    echo(
+                                        "No requirements.txt found for ${serviceName}"
+                                    )
+                                }
+                            }
+
+                        } else if (projectType == 'java') {
+
+                            dir(serviceDir) {
+
+                                if (fileExists('pom.xml')) {
+
+                                    bat(
+                                        'mvn install -DskipTests'
+                                    )
+
+                                } else {
+
+                                    echo(
+                                        "No pom.xml found for ${serviceName}"
+                                    )
+                                }
+                            }
+
+                        } else if (projectType == 'go') {
+
+                            dir(serviceDir) {
+
+                                bat 'go mod download'
+                            }
+
+                        } else if (projectType == 'docker') {
+
+                            echo(
+                                "Docker project detected. Dependencies are handled by Dockerfile."
+                            )
+
+                        } else {
+
+                            error(
+                                "Unsupported project type for ${serviceName}: ${projectType}"
+                            )
+                        }
+                    }
+
+                    echo(
+                        "All service dependencies processed successfully."
                     )
                 }
             }
         }
 
-        stage('Install Dependencies') {
-            steps {
-                script {
-
-                    def analysisText =
-                        readFile(
-                            file: 'deployflow-env.properties'
-                        ).trim()
-
-                    def analysis = [:]
-
-                    analysisText.readLines().each { line ->
-
-                        def separator =
-                            line.indexOf('=')
-
-                        if (separator > 0) {
-                            def key =
-                                line.substring(
-                                    0,
-                                    separator
-                                ).trim()
-
-                            def value =
-                                line.substring(
-                                    separator + 1
-                                ).trim()
-
-                            analysis[key] = value
-                        }
-                    }
-
-                    def projectType =
-                        analysis['PROJECT_TYPE']
-
-                    def serviceDir = 'app'
-
-                    if (params.SERVICE_PATH?.trim()) {
-                        serviceDir =
-                            "app\\${params.SERVICE_PATH.trim().replace('/', '\\')}"
-                    }
-
-                    echo "Installing dependencies for: ${projectType}"
-
-                    if (projectType == 'node') {
-
-                        dir(serviceDir) {
-                            bat 'npm install'
-                        }
-
-                    } else if (projectType == 'python') {
-
-                        dir(serviceDir) {
-
-                            if (fileExists('requirements.txt')) {
-                                bat 'python -m pip install -r requirements.txt'
-                            } else {
-                                echo 'No requirements.txt found'
-                            }
-                        }
-
-                    } else if (projectType == 'java') {
-
-                        dir(serviceDir) {
-
-                            if (fileExists('pom.xml')) {
-                                bat 'mvn install -DskipTests'
-                            } else {
-                                echo 'No pom.xml found'
-                            }
-                        }
-
-                    } else if (projectType == 'docker') {
-
-                        echo 'Docker project detected. Dependency installation handled by Dockerfile.'
-
-                    } else if (projectType == 'go') {
-
-                        dir(serviceDir) {
-                            bat 'go mod download'
-                        }
-
-                    } else {
-
-                        error "Unsupported project type: ${projectType}"
-                    }
-                }
-            }
-        }
 
         stage('Build and Test') {
+
             steps {
+
                 script {
 
-                    def analysisText =
-                        readFile(
-                            file: 'deployflow-env.properties'
+                    if (!fileExists(
+                        'deployflow-services.json'
+                    )) {
+
+                        error(
+                            "Service list not found."
+                        )
+                    }
+
+                    def serviceCountText = bat(
+                        script:
+                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                        returnStdout: true
+                    ).trim()
+
+                    def serviceCount =
+                        Integer.parseInt(serviceCountText)
+
+                    for (int i = 0; i < serviceCount; i++) {
+
+                        def serviceName = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                            returnStdout: true
                         ).trim()
 
-                    def analysis = [:]
+                        def servicePath = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);\"",
+                            returnStdout: true
+                        ).trim()
 
-                    analysisText.readLines().each { line ->
+                        def projectType = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);\"",
+                            returnStdout: true
+                        ).trim()
 
-                        def separator =
-                            line.indexOf('=')
+                        def serviceDir =
+                            "app\\${servicePath.replace('/', '\\')}"
 
-                        if (separator > 0) {
-                            def key =
-                                line.substring(
-                                    0,
-                                    separator
-                                ).trim()
+                        echo """
+========================================
+ Build / Test
+ Service: ${serviceName}
+ Type:    ${projectType}
+========================================
+"""
 
-                            def value =
-                                line.substring(
-                                    separator + 1
-                                ).trim()
+                        if (projectType == 'node') {
 
-                            analysis[key] = value
+                            dir(serviceDir) {
+
+                                if (fileExists('package.json')) {
+
+                                    bat(
+                                        'npm test --if-present'
+                                    )
+
+                                    bat(
+                                        'npm run build --if-present'
+                                    )
+                                }
+
+                            }
+
+                        } else if (projectType == 'python') {
+
+                            dir(serviceDir) {
+
+                                if (
+                                    fileExists('pytest.ini') ||
+                                    fileExists('tests')
+                                ) {
+
+                                    bat(
+                                        'python -m pytest'
+                                    )
+
+                                } else {
+
+                                    echo(
+                                        "No pytest configuration found. Skipping tests."
+                                    )
+                                }
+                            }
+
+                        } else if (projectType == 'java') {
+
+                            dir(serviceDir) {
+
+                                if (fileExists('pom.xml')) {
+
+                                    bat 'mvn test'
+                                }
+                            }
+
+                        } else if (projectType == 'go') {
+
+                            dir(serviceDir) {
+
+                                bat 'go test ./...'
+                            }
+
+                        } else if (projectType == 'docker') {
+
+                            echo(
+                                "Docker project detected. Dockerfile will perform application build."
+                            )
+
+                        } else {
+
+                            error(
+                                "Unsupported project type: ${projectType}"
+                            )
                         }
                     }
 
-                    def projectType =
-                        analysis['PROJECT_TYPE']
-
-                    def serviceDir = 'app'
-
-                    if (params.SERVICE_PATH?.trim()) {
-                        serviceDir =
-                            "app\\${params.SERVICE_PATH.trim().replace('/', '\\')}"
-                    }
-
-                    echo "Build/Test project type: ${projectType}"
-
-                    if (projectType == 'node') {
-
-                        dir(serviceDir) {
-
-                            if (fileExists('package.json')) {
-
-                                bat 'npm test --if-present'
-                                bat 'npm run build --if-present'
-
-                            }
-                        }
-
-                    } else if (projectType == 'python') {
-
-                        dir(serviceDir) {
-
-                            if (fileExists('pytest.ini') ||
-                                fileExists('tests')) {
-
-                                bat 'python -m pytest'
-
-                            } else {
-
-                                echo 'No pytest configuration found. Skipping tests.'
-                            }
-                        }
-
-                    } else if (projectType == 'java') {
-
-                        dir(serviceDir) {
-
-                            if (fileExists('pom.xml')) {
-                                bat 'mvn test'
-                            }
-
-                        }
-
-                    } else if (projectType == 'go') {
-
-                        dir(serviceDir) {
-
-                            bat 'go test ./...'
-
-                        }
-
-                    } else if (projectType == 'docker') {
-
-                        echo 'Docker project detected. Dockerfile will perform application build.'
-
-                    } else {
-
-                        error "Unsupported project type: ${projectType}"
-                    }
+                    echo(
+                        "All service build/test operations completed successfully."
+                    )
                 }
             }
         }
 
-        stage('Prepare Dockerfile') {
+
+        stage('Prepare Dockerfiles') {
+
             steps {
+
                 script {
 
-                    def analysisText =
-                        readFile(
-                            file: 'deployflow-env.properties'
+                    def serviceCountText = bat(
+                        script:
+                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                        returnStdout: true
+                    ).trim()
+
+                    def serviceCount =
+                        Integer.parseInt(serviceCountText)
+
+                    for (int i = 0; i < serviceCount; i++) {
+
+                        def serviceName = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                            returnStdout: true
                         ).trim()
 
-                    def analysis = [:]
+                        def servicePath = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);\"",
+                            returnStdout: true
+                        ).trim()
 
-                    analysisText.readLines().each { line ->
+                        def projectType = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);\"",
+                            returnStdout: true
+                        ).trim()
 
-                        def separator =
-                            line.indexOf('=')
+                        def framework = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].framework||'');\"",
+                            returnStdout: true
+                        ).trim()
 
-                        if (separator > 0) {
+                        def port = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].port||3000);\"",
+                            returnStdout: true
+                        ).trim()
 
-                            def key =
-                                line.substring(
-                                    0,
-                                    separator
-                                ).trim()
+                        def startCommand = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].startCommand||'');\"",
+                            returnStdout: true
+                        ).trim()
 
-                            def value =
-                                line.substring(
-                                    separator + 1
-                                ).trim()
+                        def isStatic = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].isStatic?'true':'false');\"",
+                            returnStdout: true
+                        ).trim()
 
-                            analysis[key] = value
-                        }
-                    }
+                        def outputDirectory = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].outputDirectory||'');\"",
+                            returnStdout: true
+                        ).trim()
 
-                    def serviceDir = 'app'
+                        def existingDockerfile = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].existingDockerfile?'true':'false');\"",
+                            returnStdout: true
+                        ).trim()
 
-                    if (params.SERVICE_PATH?.trim()) {
-                        serviceDir =
-                            "app\\${params.SERVICE_PATH.trim().replace('/', '\\')}"
-                    }
+                        def serviceDir =
+                            "app\\${servicePath.replace('/', '\\')}"
 
-                    def existingDockerfile =
-                        analysis['EXISTING_DOCKERFILE'] == 'true'
+                        echo """
+========================================
+ Preparing Dockerfile
+ Service:  ${serviceName}
+ Type:     ${projectType}
+ Framework:${framework}
+ Port:     ${port}
+ Static:   ${isStatic}
+========================================
+"""
 
-                    if (existingDockerfile) {
+                        if (existingDockerfile == 'true') {
 
-                        echo "Existing Dockerfile detected."
+                            echo(
+                                "Existing Dockerfile detected for ${serviceName}. Keeping it."
+                            )
 
-                    } else {
+                        } else if (projectType == 'node' && isStatic == 'true') {
 
-                        echo "No Dockerfile detected. Generating one."
+                            def outputDir =
+                                outputDirectory ?: 'build'
 
-                        def projectType =
-                            analysis['PROJECT_TYPE']
+                            writeFile(
+                                file: "${serviceDir}\\Dockerfile",
+                                text: """FROM node:22-alpine AS builder
 
-                        def port =
-                            analysis['PORT'] ?: '3000'
+WORKDIR /app
 
-                        if (projectType == 'node') {
+COPY package*.json ./
+
+RUN npm install
+
+COPY . .
+
+RUN npm run build
+
+FROM nginx:alpine
+
+COPY --from=builder /app/${outputDir} /usr/share/nginx/html
+
+EXPOSE ${port}
+
+CMD ["nginx", "-g", "daemon off;"]
+"""
+                            )
+
+                        } else if (projectType == 'node') {
 
                             writeFile(
                                 file: "${serviceDir}\\Dockerfile",
@@ -520,16 +683,16 @@ CMD ["npm", "start"]
 
                         } else if (projectType == 'python') {
 
-    def startCommand =
-        analysis['START_COMMAND'] ?: ''
+                            if (!startCommand) {
 
-    if (!startCommand) {
-        error "Python project detected but no start command was found."
-    }
+                                error(
+                                    "Python service ${serviceName} has no detected start command."
+                                )
+                            }
 
-    writeFile(
-        file: "${serviceDir}\\Dockerfile",
-        text: """FROM python:3.12-slim
+                            writeFile(
+                                file: "${serviceDir}\\Dockerfile",
+                                text: """FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -537,15 +700,13 @@ COPY requirements.txt ./
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN python -m spacy download en_core_web_sm
-
 COPY . .
 
 EXPOSE ${port}
 
 CMD ["sh", "-c", "${startCommand}"]
 """
-    )
+                            )
 
                         } else if (projectType == 'go') {
 
@@ -603,335 +764,532 @@ CMD ["java", "-jar", "app.jar"]
 
                             } else {
 
-                                error "Java project detected but pom.xml was not found."
+                                error(
+                                    "Java service ${serviceName} does not contain pom.xml."
+                                )
                             }
+
+                        } else if (projectType == 'docker') {
+
+                            echo(
+                                "Docker project detected. Existing Dockerfile is expected."
+                            )
 
                         } else {
 
-                            error "Cannot automatically generate Dockerfile for project type: ${projectType}"
+                            error(
+                                "Cannot generate Dockerfile for ${serviceName}."
+                            )
                         }
-
-                        echo "Dockerfile generated successfully."
                     }
+
+                    echo(
+                        "Dockerfiles prepared for all services."
+                    )
                 }
             }
         }
 
-        stage('Build Docker Image') {
-    steps {
-        script {
 
-            def serviceDir = 'app'
+        stage('Build Docker Images') {
 
-            if (params.SERVICE_PATH?.trim()) {
-                serviceDir =
-                    "app\\${params.SERVICE_PATH.trim().replace('/', '\\')}"
-            }
-
-            def dockerImage =
-                "deepak97813/${params.APP_ID}:${env.BUILD_NUMBER}"
-
-            echo "Building Docker image:"
-            echo dockerImage
-
-            dir(serviceDir) {
-
-                bat(
-                    "docker build -t ${dockerImage} ."
-                )
-            }
-
-            echo "Docker image built successfully:"
-            echo dockerImage
-        }
-    }
-}
-
-        stage('Push Docker Image') {
-    steps {
-        script {
-
-            def dockerImage =
-                "deepak97813/${params.APP_ID}:${env.BUILD_NUMBER}"
-
-            echo "Pushing Docker image: ${dockerImage}"
-
-            withCredentials([
-                usernamePassword(
-                    credentialsId: 'dockerhub-credentials',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASSWORD'
-                )
-            ]) {
-
-                withEnv([
-                    "DOCKER_IMAGE=${dockerImage}"
-                ]) {
-
-                    bat '''
-                        @echo off
-
-                        echo ==============================
-                        echo Docker Hub Authentication
-                        echo ==============================
-
-                        echo Username: %DOCKER_USER%
-
-                        powershell -NoProfile -Command "$env:DOCKER_PASSWORD | docker login docker.io -u $env:DOCKER_USER --password-stdin"
-
-                        if errorlevel 1 (
-                            echo LOGIN FAILED
-                            exit /b 1
-                        )
-
-                        echo LOGIN SUCCESSFUL
-                        echo Pushing: %DOCKER_IMAGE%
-
-                        docker push %DOCKER_IMAGE%
-
-                        if errorlevel 1 (
-                            echo PUSH FAILED
-                            exit /b 1
-                        )
-
-                        echo PUSH SUCCESSFUL
-                    '''
-                }
-            }
-        }
-    }
-}
-
-        stage('Prepare Kubernetes Manifest') {
             steps {
+
                 script {
 
-                    def analysisText =
-                        readFile(
-                            file: 'deployflow-env.properties'
+                    def serviceCountText = bat(
+                        script:
+                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                        returnStdout: true
+                    ).trim()
+
+                    def serviceCount =
+                        Integer.parseInt(serviceCountText)
+
+                    for (int i = 0; i < serviceCount; i++) {
+
+                        def serviceName = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                            returnStdout: true
                         ).trim()
 
-                    def analysis = [:]
+                        def servicePath = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);\"",
+                            returnStdout: true
+                        ).trim()
 
-                    analysisText.readLines().each { line ->
+                        def safeServiceName =
+                            serviceName
+                                .toLowerCase()
+                                .replaceAll('[^a-z0-9-]+', '-')
+                                .replaceAll('^-+', '')
+                                .replaceAll('-+$', '')
 
-                        def separator =
-                            line.indexOf('=')
+                        if (!safeServiceName) {
+                            safeServiceName = "service-${i + 1}"
+                        }
 
-                        if (separator > 0) {
+                        def serviceDir =
+                            "app\\${servicePath.replace('/', '\\')}"
 
-                            def key =
-                                line.substring(
-                                    0,
-                                    separator
-                                ).trim()
+                        def serviceAppId =
+                            "${params.APP_ID}-${safeServiceName}"
 
-                            def value =
-                                line.substring(
-                                    separator + 1
-                                ).trim()
+                        def dockerImage =
+                            "${env.DOCKER_USERNAME}/${serviceAppId}:${env.BUILD_NUMBER}"
 
-                            analysis[key] = value
+                        echo """
+========================================
+ Building Docker Image
+ Service: ${serviceName}
+ Image:   ${dockerImage}
+========================================
+"""
+
+                        dir(serviceDir) {
+
+                            bat(
+                                "docker build -t ${dockerImage} ."
+                            )
                         }
                     }
 
-                    def projectType =
-                        analysis['PROJECT_TYPE']
+                    echo(
+                        "Docker images built successfully for all services."
+                    )
+                }
+            }
+        }
 
-                    def framework =
-                        analysis['FRAMEWORK']
 
-                    def port =
-                        analysis['PORT'] ?: '3000'
+        stage('Push Docker Images') {
 
-                    def healthPath =
-                        analysis['HEALTH_PATH'] ?: '/'
+            steps {
 
-                    def isStatic =
-                        analysis['IS_STATIC'] ?: 'false'
+                script {
 
-                    def outputDirectory =
-                        analysis['OUTPUT_DIRECTORY'] ?: ''
+                    def serviceCountText = bat(
+                        script:
+                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                        returnStdout: true
+                    ).trim()
 
-                    def existingDockerfile =
-                        analysis['EXISTING_DOCKERFILE'] ?: 'false'
+                    def serviceCount =
+                        Integer.parseInt(serviceCountText)
 
-                    echo "Preparing Kubernetes manifests."
+                    withCredentials([
 
-                    echo "Project Type: ${projectType}"
-                    echo "Framework: ${framework}"
-                    echo "Port: ${port}"
-                    echo "Health Path: ${healthPath}"
-                    echo "Static: ${isStatic}"
+                        usernamePassword(
+                            credentialsId: 'dockerhub-credentials',
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_PASSWORD'
+                        )
 
-                    withEnv([
-                        "PROJECT_TYPE=${projectType}",
-                        "FRAMEWORK=${framework}",
-                        "PORT=${port}",
-                        "HEALTH_PATH=${healthPath}",
-                        "IS_STATIC=${isStatic}",
-                        "OUTPUT_DIRECTORY=${outputDirectory}",
-                        "EXISTING_DOCKERFILE=${existingDockerfile}",
-                        "ENV_VARS=${params.ENV_VARS}",
-                        "SECRETS=${params.SECRETS}"
                     ]) {
 
-                        bat(
+                        bat '''
+                            @echo off
+
+                            echo ==============================
+                            echo Docker Hub Authentication
+                            echo ==============================
+
+                            powershell -NoProfile -Command "$env:DOCKER_PASSWORD | docker login docker.io -u $env:DOCKER_USER --password-stdin"
+
+                            if errorlevel 1 (
+                                echo LOGIN FAILED
+                                exit /b 1
+                            )
+
+                            echo LOGIN SUCCESSFUL
+                        '''
+
+                        for (int i = 0; i < serviceCount; i++) {
+
+                            def serviceName = bat(
+                                script:
+                                    "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                                returnStdout: true
+                            ).trim()
+
+                            def safeServiceName =
+                                serviceName
+                                    .toLowerCase()
+                                    .replaceAll('[^a-z0-9-]+', '-')
+                                    .replaceAll('^-+', '')
+                                    .replaceAll('-+$', '')
+
+                            if (!safeServiceName) {
+                                safeServiceName =
+                                    "service-${i + 1}"
+                            }
+
+                            def serviceAppId =
+                                "${params.APP_ID}-${safeServiceName}"
+
+                            def dockerImage =
+                                "${env.DOCKER_USERNAME}/${serviceAppId}:${env.BUILD_NUMBER}"
+
+                            echo(
+                                "Pushing ${dockerImage}"
+                            )
+
+                            bat(
+                                "docker push ${dockerImage}"
+                            )
+                        }
+                    }
+
+                    echo(
+                        "All Docker images pushed successfully."
+                    )
+                }
+            }
+        }
+
+
+        stage('Prepare Kubernetes Manifests') {
+
+            steps {
+
+                script {
+
+                    def serviceCountText = bat(
+                        script:
+                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                        returnStdout: true
+                    ).trim()
+
+                    def serviceCount =
+                        Integer.parseInt(serviceCountText)
+
+                    bat(
+                        'if exist k8s\\generated rmdir /s /q k8s\\generated'
+                    )
+
+                    bat(
+                        'mkdir k8s\\generated'
+                    )
+
+                    for (int i = 0; i < serviceCount; i++) {
+
+                        def serviceName = bat(
                             script:
-                                "powershell -ExecutionPolicy Bypass -File \"${env.WORKSPACE}\\scripts\\prepare-k8s.ps1\""
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def servicePath = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def projectType = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def framework = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].framework||'');\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def port = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].port||3000);\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def healthPath = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].healthPath||'/');\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def isStatic = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].isStatic?'true':'false');\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def outputDirectory = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].outputDirectory||'');\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def existingDockerfile = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].existingDockerfile?'true':'false');\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def safeServiceName =
+                            serviceName
+                                .toLowerCase()
+                                .replaceAll('[^a-z0-9-]+', '-')
+                                .replaceAll('^-+', '')
+                                .replaceAll('-+$', '')
+
+                        if (!safeServiceName) {
+                            safeServiceName =
+                                "service-${i + 1}"
+                        }
+
+                        def serviceAppId =
+                            "${params.APP_ID}-${safeServiceName}"
+
+                        def dockerImage =
+                            "${env.DOCKER_USERNAME}/${serviceAppId}:${env.BUILD_NUMBER}"
+
+                        echo """
+========================================
+ Preparing Kubernetes
+ Service:      ${serviceName}
+ Application:  ${serviceAppId}
+ Image:        ${dockerImage}
+ Port:         ${port}
+ Health Path:  ${healthPath}
+========================================
+"""
+
+                        withEnv([
+
+                            "APP_ID=${serviceAppId}",
+                            "APP_NAME=${params.APP_NAME}-${serviceName}",
+                            "BUILD_NUMBER=${env.BUILD_NUMBER}",
+                            "DOCKER_IMAGE=${dockerImage}",
+
+                            "PROJECT_TYPE=${projectType}",
+                            "FRAMEWORK=${framework}",
+                            "PORT=${port}",
+                            "HEALTH_PATH=${healthPath}",
+                            "IS_STATIC=${isStatic}",
+                            "OUTPUT_DIRECTORY=${outputDirectory}",
+                            "EXISTING_DOCKERFILE=${existingDockerfile}",
+
+                            "ENV_VARS=${params.ENV_VARS}",
+                            "SECRETS=${params.SECRETS}"
+
+                        ]) {
+
+                            bat(
+                                script:
+                                    "powershell -ExecutionPolicy Bypass -File \"${env.WORKSPACE}\\scripts\\prepare-k8s.ps1\""
+                            )
+                        }
+
+                        bat(
+                            "copy /Y k8s\\configmap-rendered.yaml k8s\\generated\\${serviceAppId}-configmap.yaml"
+                        )
+
+                        bat(
+                            "copy /Y k8s\\secret-rendered.yaml k8s\\generated\\${serviceAppId}-secret.yaml"
+                        )
+
+                        bat(
+                            "copy /Y k8s\\deployment-rendered.yaml k8s\\generated\\${serviceAppId}-deployment.yaml"
+                        )
+
+                        bat(
+                            "copy /Y k8s\\service-rendered.yaml k8s\\generated\\${serviceAppId}-service.yaml"
+                        )
+
+                        bat(
+                            "copy /Y k8s\\hpa-rendered.yaml k8s\\generated\\${serviceAppId}-hpa.yaml"
+                        )
+
+                        bat(
+                            "copy /Y k8s\\ingress-rendered.yaml k8s\\generated\\${serviceAppId}-ingress.yaml"
                         )
                     }
+
+                    echo(
+                        "Kubernetes manifests prepared for all services."
+                    )
                 }
             }
         }
+
 
         stage('Deploy to Kubernetes') {
+
             steps {
+
                 script {
 
-                    echo "Deploying application to Kubernetes."
-
-                    bat(
-                        "kubectl apply -f k8s\\configmap-rendered.yaml"
+                    echo(
+                        "Deploying all generated Kubernetes resources."
                     )
 
                     bat(
-                        "kubectl apply -f k8s\\secret-rendered.yaml"
+                        "kubectl apply -f k8s\\generated"
                     )
 
-                    bat(
-                        "kubectl apply -f k8s\\deployment-rendered.yaml"
+                    echo(
+                        "All Kubernetes resources applied successfully."
                     )
-
-                    bat(
-                        "kubectl apply -f k8s\\service-rendered.yaml"
-                    )
-
-                    bat(
-                        "kubectl apply -f k8s\\hpa-rendered.yaml"
-                    )
-
-                    bat(
-                        "kubectl apply -f k8s\\ingress-rendered.yaml"
-                    )
-
-                    echo "Kubernetes resources applied successfully."
                 }
             }
         }
+
 
         stage('Health Check') {
+
             steps {
+
                 script {
 
-                    def analysisText =
-                        readFile(
-                            file: 'deployflow-env.properties'
+                    def serviceCountText = bat(
+                        script:
+                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                        returnStdout: true
+                    ).trim()
+
+                    def serviceCount =
+                        Integer.parseInt(serviceCountText)
+
+                    for (int i = 0; i < serviceCount; i++) {
+
+                        def serviceName = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                            returnStdout: true
                         ).trim()
 
-                    def analysis = [:]
+                        def safeServiceName =
+                            serviceName
+                                .toLowerCase()
+                                .replaceAll('[^a-z0-9-]+', '-')
+                                .replaceAll('^-+', '')
+                                .replaceAll('-+$', '')
 
-                    analysisText.readLines().each { line ->
-
-                        def separator =
-                            line.indexOf('=')
-
-                        if (separator > 0) {
-
-                            def key =
-                                line.substring(
-                                    0,
-                                    separator
-                                ).trim()
-
-                            def value =
-                                line.substring(
-                                    separator + 1
-                                ).trim()
-
-                            analysis[key] = value
+                        if (!safeServiceName) {
+                            safeServiceName =
+                                "service-${i + 1}"
                         }
+
+                        def serviceAppId =
+                            "${params.APP_ID}-${safeServiceName}"
+
+                        echo """
+========================================
+ Health Check
+ Service: ${serviceName}
+========================================
+"""
+
+                        bat(
+                            "kubectl get pods -l app=${serviceAppId}"
+                        )
+
+                        bat(
+                            "kubectl get service ${serviceAppId}-service"
+                        )
                     }
 
-                    def port =
-                        analysis['PORT'] ?: '3000'
-
-                    echo "Checking Kubernetes pods."
-
-                    bat(
-                        "kubectl get pods -l app=${params.APP_ID}"
+                    echo(
+                        "Health checks completed for all services."
                     )
-
-                    echo "Checking Kubernetes service."
-
-                    bat(
-                        "kubectl get service ${params.APP_ID}-service"
-                    )
-
-                    echo "Health check completed."
                 }
             }
         }
+
 
         stage('Deployment Verification') {
+
             steps {
+
                 script {
 
-                    echo "Verifying deployment."
+                    def serviceCountText = bat(
+                        script:
+                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                        returnStdout: true
+                    ).trim()
 
-                    bat(
-                        "kubectl rollout status deployment/${params.APP_ID} --timeout=120s"
-                    )
+                    def serviceCount =
+                        Integer.parseInt(serviceCountText)
 
-                    echo "Deployment rollout successful."
+                    for (int i = 0; i < serviceCount; i++) {
 
-                    bat(
-                        "kubectl get deployment ${params.APP_ID}"
-                    )
+                        def serviceName = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                            returnStdout: true
+                        ).trim()
 
-                    bat(
-                        "kubectl get pods -l app=${params.APP_ID}"
-                    )
+                        def safeServiceName =
+                            serviceName
+                                .toLowerCase()
+                                .replaceAll('[^a-z0-9-]+', '-')
+                                .replaceAll('^-+', '')
+                                .replaceAll('-+$', '')
 
-                    bat(
-                        "kubectl get ingress ${params.APP_ID}-ingress"
+                        if (!safeServiceName) {
+                            safeServiceName =
+                                "service-${i + 1}"
+                        }
+
+                        def serviceAppId =
+                            "${params.APP_ID}-${safeServiceName}"
+
+                        echo """
+========================================
+ Deployment Verification
+ Service: ${serviceName}
+ Deployment: ${serviceAppId}
+========================================
+"""
+
+                        bat(
+                            "kubectl rollout status deployment/${serviceAppId} --timeout=120s"
+                        )
+
+                        bat(
+                            "kubectl get deployment ${serviceAppId}"
+                        )
+
+                        bat(
+                            "kubectl get pods -l app=${serviceAppId}"
+                        )
+
+                        bat(
+                            "kubectl get service ${serviceAppId}-service"
+                        )
+
+                        bat(
+                            "kubectl get ingress ${serviceAppId}-ingress"
+                        )
+                    }
+
+                    echo(
+                        "Deployment verification completed for all services."
                     )
                 }
             }
         }
 
+
         stage('Deployment Summary') {
+
             steps {
+
                 script {
 
-                    def analysisText =
-                        readFile(
-                            file: 'deployflow-env.properties'
-                        ).trim()
+                    def serviceCountText = bat(
+                        script:
+                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                        returnStdout: true
+                    ).trim()
 
-                    def analysis = [:]
-
-                    analysisText.readLines().each { line ->
-
-                        def separator =
-                            line.indexOf('=')
-
-                        if (separator > 0) {
-
-                            def key =
-                                line.substring(
-                                    0,
-                                    separator
-                                ).trim()
-
-                            def value =
-                                line.substring(
-                                    separator + 1
-                                ).trim()
-
-                            analysis[key] = value
-                        }
-                    }
+                    def serviceCount =
+                        Integer.parseInt(serviceCountText)
 
                     echo """
 ==================================================
@@ -950,32 +1308,95 @@ Repository:
 Branch:
     ${params.BRANCH}
 
-Service Path:
-    ${params.SERVICE_PATH?.trim() ?: '(repository root)'}
+Detected Services:
+    ${serviceCount}
+
+==================================================
+"""
+
+                    for (int i = 0; i < serviceCount; i++) {
+
+                        def serviceName = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def servicePath = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def projectType = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def framework = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].framework||'');\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def port = bat(
+                            script:
+                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].port||3000);\"",
+                            returnStdout: true
+                        ).trim()
+
+                        def safeServiceName =
+                            serviceName
+                                .toLowerCase()
+                                .replaceAll('[^a-z0-9-]+', '-')
+                                .replaceAll('^-+', '')
+                                .replaceAll('-+$', '')
+
+                        if (!safeServiceName) {
+                            safeServiceName =
+                                "service-${i + 1}"
+                        }
+
+                        def serviceAppId =
+                            "${params.APP_ID}-${safeServiceName}"
+
+                        echo """
+--------------------------------------------------
+Service:
+    ${serviceName}
+
+Path:
+    ${servicePath}
 
 Project Type:
-    ${analysis['PROJECT_TYPE']}
+    ${projectType}
 
 Framework:
-    ${analysis['FRAMEWORK']}
+    ${framework}
 
 Port:
-    ${analysis['PORT']}
-
-Health Path:
-    ${analysis['HEALTH_PATH']}
+    ${port}
 
 Docker Image:
-    deepak97813/${params.APP_ID}:${env.BUILD_NUMBER}
+    ${env.DOCKER_USERNAME}/${serviceAppId}:${env.BUILD_NUMBER}
 
 Kubernetes:
-    Deployment: ${params.APP_ID}
-    Service:    ${params.APP_ID}-service
-    Ingress:    ${params.APP_ID}-ingress
+    Deployment: ${serviceAppId}
+
+    Service:    ${serviceAppId}-service
+
+    Ingress:    ${serviceAppId}-ingress
 
 Application URL:
-    http://${params.APP_ID}.localhost
+    http://${serviceAppId}.localhost
+--------------------------------------------------
+"""
+                    }
 
+                    echo """
+==================================================
+        DeployFlow Deployment Complete
 ==================================================
 """
                 }
@@ -986,15 +1407,24 @@ Application URL:
     post {
 
         success {
-            echo "DeployFlow pipeline completed successfully."
+
+            echo(
+                "DeployFlow pipeline completed successfully."
+            )
         }
 
         failure {
-            echo "DeployFlow pipeline failed."
+
+            echo(
+                "DeployFlow pipeline failed."
+            )
         }
 
         always {
-            echo "Pipeline finished."
+
+            echo(
+                "Pipeline finished."
+            )
         }
     }
 }
