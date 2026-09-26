@@ -166,13 +166,15 @@ pipeline {
 
                     def analysisType = bat(
                         script:
-                            'node -e "const fs=require(\'fs\'); const a=JSON.parse(fs.readFileSync(\'deployflow-repository-analysis.json\',\'utf8\')); console.log(a.type||\'\');"',
+                            '''@echo off
+node -e "const fs=require('fs'); const a=JSON.parse(fs.readFileSync('deployflow-repository-analysis.json','utf8')); console.log(a.type||'');"''',
                         returnStdout: true
                     ).trim()
 
                     def serviceCountText = bat(
                         script:
-                            'node -e "const fs=require(\'fs\'); const a=JSON.parse(fs.readFileSync(\'deployflow-repository-analysis.json\',\'utf8\')); console.log((a.services||[]).length);"',
+                            '''@echo off
+node -e "const fs=require('fs'); const a=JSON.parse(fs.readFileSync('deployflow-repository-analysis.json','utf8')); console.log((a.services||[]).length);"''',
                         returnStdout: true
                     ).trim()
 
@@ -196,12 +198,14 @@ Detected Services: ${serviceCount}
 """
 
                     bat '''
+@echo off
 node -e "const fs=require('fs'); const a=JSON.parse(fs.readFileSync('deployflow-repository-analysis.json','utf8')); console.log('Detected Services:'); (a.services||[]).forEach((s,i)=>{console.log('['+(i+1)+'] '+s.name+' | path='+s.path+' | type='+s.type+' | framework='+s.framework+' | port='+s.port+' | static='+s.isStatic);});"
 '''
 
                     if (analysisType == 'single-service') {
 
                         bat '''
+@echo off
 node -e "const fs=require('fs'); const a=JSON.parse(fs.readFileSync('deployflow-repository-analysis.json','utf8')); const s=a.services[0]; const lines=['PROJECT_TYPE='+String(s.type||''),'FRAMEWORK='+String(s.framework||''),'PACKAGE_MANAGER='+String(s.packageManager||''),'BUILD_COMMAND='+String(s.buildCommand||''),'START_COMMAND='+String(s.startCommand||''),'PORT='+String(s.port||3000),'HEALTH_PATH='+String(s.healthPath||'/'),'IS_STATIC='+(s.isStatic?'true':'false'),'OUTPUT_DIRECTORY='+String(s.outputDirectory||''),'EXISTING_DOCKERFILE='+(s.existingDockerfile?'true':'false'),'SERVICE_NAME='+String(s.name||'app'),'SERVICE_PATH='+String(s.path||'.')]; fs.writeFileSync('deployflow-env.properties',lines.join('\\n'));"
 '''
 
@@ -274,7 +278,8 @@ service independently.
 
                     def servicesJson = bat(
                         script:
-                            'node -e "const fs=require(\'fs\'); const a=JSON.parse(fs.readFileSync(\'deployflow-repository-analysis.json\',\'utf8\')); console.log(JSON.stringify(a.services||[]));"',
+                            '''@echo off
+node -e "const fs=require('fs'); const a=JSON.parse(fs.readFileSync('deployflow-repository-analysis.json','utf8')); console.log(JSON.stringify(a.services||[]));"''',
                         returnStdout: true
                     ).trim()
 
@@ -285,7 +290,8 @@ service independently.
 
                     def serviceCountText = bat(
                         script:
-                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                            '''@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s.length);"''',
                         returnStdout: true
                     ).trim()
 
@@ -303,19 +309,22 @@ service independently.
 
                         def serviceName = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);" """,
                             returnStdout: true
                         ).trim()
 
                         def servicePath = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);" """,
                             returnStdout: true
                         ).trim()
 
                         def projectType = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);" """,
                             returnStdout: true
                         ).trim()
 
@@ -426,7 +435,8 @@ Type:    ${projectType}
 
                     def serviceCountText = bat(
                         script:
-                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                            '''@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s.length);"''',
                         returnStdout: true
                     ).trim()
 
@@ -437,19 +447,22 @@ Type:    ${projectType}
 
                         def serviceName = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);" """,
                             returnStdout: true
                         ).trim()
 
                         def servicePath = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);" """,
                             returnStdout: true
                         ).trim()
 
                         def projectType = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);" """,
                             returnStdout: true
                         ).trim()
 
@@ -549,7 +562,8 @@ Type:    ${projectType}
 
                     def serviceCountText = bat(
                         script:
-                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                            '''@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s.length);"''',
                         returnStdout: true
                     ).trim()
 
@@ -560,55 +574,64 @@ Type:    ${projectType}
 
                         def serviceName = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);" """,
                             returnStdout: true
                         ).trim()
 
                         def servicePath = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);" """,
                             returnStdout: true
                         ).trim()
 
                         def projectType = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);" """,
                             returnStdout: true
                         ).trim()
 
                         def framework = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].framework||'');\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].framework||'');" """,
                             returnStdout: true
                         ).trim()
 
                         def port = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].port||3000);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].port||3000);" """,
                             returnStdout: true
                         ).trim()
 
                         def startCommand = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].startCommand||'');\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].startCommand||'');" """,
                             returnStdout: true
                         ).trim()
 
                         def isStatic = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].isStatic?'true':'false');\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].isStatic?'true':'false');" """,
                             returnStdout: true
                         ).trim()
 
                         def outputDirectory = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].outputDirectory||'');\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].outputDirectory||'');" """,
                             returnStdout: true
                         ).trim()
 
                         def existingDockerfile = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].existingDockerfile?'true':'false');\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].existingDockerfile?'true':'false');" """,
                             returnStdout: true
                         ).trim()
 
@@ -799,7 +822,8 @@ CMD ["java", "-jar", "app.jar"]
 
                     def serviceCountText = bat(
                         script:
-                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                            '''@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s.length);"''',
                         returnStdout: true
                     ).trim()
 
@@ -810,13 +834,15 @@ CMD ["java", "-jar", "app.jar"]
 
                         def serviceName = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);" """,
                             returnStdout: true
                         ).trim()
 
                         def servicePath = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);" """,
                             returnStdout: true
                         ).trim()
 
@@ -828,7 +854,8 @@ CMD ["java", "-jar", "app.jar"]
                                 .replaceAll('-+$', '')
 
                         if (!safeServiceName) {
-                            safeServiceName = "service-${i + 1}"
+                            safeServiceName =
+                                "service-${i + 1}"
                         }
 
                         def serviceDir =
@@ -872,7 +899,8 @@ CMD ["java", "-jar", "app.jar"]
 
                     def serviceCountText = bat(
                         script:
-                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                            '''@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s.length);"''',
                         returnStdout: true
                     ).trim()
 
@@ -890,27 +918,28 @@ CMD ["java", "-jar", "app.jar"]
                     ]) {
 
                         bat '''
-                            @echo off
+@echo off
 
-                            echo ==============================
-                            echo Docker Hub Authentication
-                            echo ==============================
+echo ==============================
+echo Docker Hub Authentication
+echo ==============================
 
-                            powershell -NoProfile -Command "$env:DOCKER_PASSWORD | docker login docker.io -u $env:DOCKER_USER --password-stdin"
+powershell -NoProfile -Command "$env:DOCKER_PASSWORD | docker login docker.io -u $env:DOCKER_USER --password-stdin"
 
-                            if errorlevel 1 (
-                                echo LOGIN FAILED
-                                exit /b 1
-                            )
+if errorlevel 1 (
+    echo LOGIN FAILED
+    exit /b 1
+)
 
-                            echo LOGIN SUCCESSFUL
-                        '''
+echo LOGIN SUCCESSFUL
+'''
 
                         for (int i = 0; i < serviceCount; i++) {
 
                             def serviceName = bat(
                                 script:
-                                    "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                                    """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);" """,
                                 returnStdout: true
                             ).trim()
 
@@ -958,7 +987,8 @@ CMD ["java", "-jar", "app.jar"]
 
                     def serviceCountText = bat(
                         script:
-                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                            '''@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s.length);"''',
                         returnStdout: true
                     ).trim()
 
@@ -977,55 +1007,64 @@ CMD ["java", "-jar", "app.jar"]
 
                         def serviceName = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);" """,
                             returnStdout: true
                         ).trim()
 
                         def servicePath = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);" """,
                             returnStdout: true
                         ).trim()
 
                         def projectType = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);" """,
                             returnStdout: true
                         ).trim()
 
                         def framework = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].framework||'');\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].framework||'');" """,
                             returnStdout: true
                         ).trim()
 
                         def port = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].port||3000);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].port||3000);" """,
                             returnStdout: true
                         ).trim()
 
                         def healthPath = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].healthPath||'/');\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].healthPath||'/');" """,
                             returnStdout: true
                         ).trim()
 
                         def isStatic = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].isStatic?'true':'false');\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].isStatic?'true':'false');" """,
                             returnStdout: true
                         ).trim()
 
                         def outputDirectory = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].outputDirectory||'');\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].outputDirectory||'');" """,
                             returnStdout: true
                         ).trim()
 
                         def existingDockerfile = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].existingDockerfile?'true':'false');\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].existingDockerfile?'true':'false');" """,
                             returnStdout: true
                         ).trim()
 
@@ -1147,7 +1186,8 @@ CMD ["java", "-jar", "app.jar"]
 
                     def serviceCountText = bat(
                         script:
-                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                            '''@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s.length);"''',
                         returnStdout: true
                     ).trim()
 
@@ -1158,7 +1198,8 @@ CMD ["java", "-jar", "app.jar"]
 
                         def serviceName = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);" """,
                             returnStdout: true
                         ).trim()
 
@@ -1209,7 +1250,8 @@ CMD ["java", "-jar", "app.jar"]
 
                     def serviceCountText = bat(
                         script:
-                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                            '''@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s.length);"''',
                         returnStdout: true
                     ).trim()
 
@@ -1220,7 +1262,8 @@ CMD ["java", "-jar", "app.jar"]
 
                         def serviceName = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);" """,
                             returnStdout: true
                         ).trim()
 
@@ -1284,7 +1327,8 @@ CMD ["java", "-jar", "app.jar"]
 
                     def serviceCountText = bat(
                         script:
-                            'node -e "const s=JSON.parse(require(\'fs\').readFileSync(\'deployflow-services.json\',\'utf8\')); console.log(s.length);"',
+                            '''@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s.length);"''',
                         returnStdout: true
                     ).trim()
 
@@ -1318,31 +1362,36 @@ Detected Services:
 
                         def serviceName = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);" """,
                             returnStdout: true
                         ).trim()
 
                         def servicePath = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);" """,
                             returnStdout: true
                         ).trim()
 
                         def projectType = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);" """,
                             returnStdout: true
                         ).trim()
 
                         def framework = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].framework||'');\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].framework||'');" """,
                             returnStdout: true
                         ).trim()
 
                         def port = bat(
                             script:
-                                "node -e \"const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].port||3000);\"",
+                                """@echo off
+node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].port||3000);" """,
                             returnStdout: true
                         ).trim()
 
