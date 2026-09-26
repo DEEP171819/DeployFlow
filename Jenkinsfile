@@ -39,11 +39,7 @@ pipeline {
             description: 'Environment variables as JSON'
         )
 
-        password(
-            name: 'DOCKER_PASSWORD',
-            defaultValue: '',
-            description: 'Docker Hub password or access token'
-        )
+        
 
         text(
             name: 'SECRETS',
@@ -652,21 +648,41 @@ CMD ["java", "-jar", "app.jar"]
             echo "Pushing Docker image:"
             echo dockerImage
 
-            def dockerPassword =
-                params.DOCKER_PASSWORD?.toString()
+            withCredentials([
+                usernamePassword(
+                    credentialsId: 'dockerhub-credentials',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASSWORD'
+                )
+            ]) {
 
-            if (!dockerPassword || dockerPassword.trim().isEmpty()) {
-                error "Docker Hub password/token was not provided"
+                withEnv([
+                    "DOCKER_IMAGE=${dockerImage}"
+                ]) {
+
+                    bat '''
+                        @echo off
+
+                        echo Logging in to Docker Hub...
+                        echo %DOCKER_PASSWORD% | docker login -u "%DOCKER_USER%" --password-stdin
+
+                        if errorlevel 1 (
+                            echo Docker Hub login failed.
+                            exit /b 1
+                        )
+
+                        echo Docker Hub login successful.
+                        echo Pushing Docker image...
+
+                        docker push %DOCKER_IMAGE%
+
+                        if errorlevel 1 (
+                            echo Docker image push failed.
+                            exit /b 1
+                        )
+                    '''
+                }
             }
-
-            bat(
-                script:
-                    "echo \"${dockerPassword}\" | docker login -u \"deepak97813\" --password-stdin"
-            )
-
-            bat(
-                "docker push ${dockerImage}"
-            )
 
             echo "Docker image pushed successfully:"
             echo dockerImage
