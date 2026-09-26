@@ -656,25 +656,47 @@ CMD ["java", "-jar", "app.jar"]
                 )
             ]) {
 
-                bat '''
-                    @echo off
-                    echo Docker username received: %DOCKER_USER%
+                withEnv([
+                    "DOCKER_IMAGE=${dockerImage}"
+                ]) {
 
-                    echo Logging in to Docker Hub...
+                    bat '''
+                        @echo off
 
-                    echo %DOCKER_PASSWORD% | docker login -u "%DOCKER_USER%" --password-stdin
+                        echo Docker username received: %DOCKER_USER%
 
-                    if errorlevel 1 (
-                        echo Docker Hub login FAILED
-                        exit /b 1
-                    )
+                        echo Logging out of Docker Hub...
+                        docker logout
 
-                    echo Docker Hub login SUCCESSFUL
-                '''
+                        echo Logging in to Docker Hub...
+
+                        echo %DOCKER_PASSWORD% | docker login docker.io -u "%DOCKER_USER%" --password-stdin
+
+                        if errorlevel 1 (
+                            echo Docker Hub login FAILED
+                            exit /b 1
+                        )
+
+                        echo Docker Hub login SUCCESSFUL
+
+                        echo Pushing Docker image:
+                        echo %DOCKER_IMAGE%
+
+                        docker push %DOCKER_IMAGE%
+
+                        if errorlevel 1 (
+                            echo Docker image push FAILED
+                            exit /b 1
+                        )
+
+                        echo Docker image push SUCCESSFUL
+                    '''
+                }
             }
         }
     }
 }
+
         stage('Prepare Kubernetes Manifest') {
             steps {
                 script {
