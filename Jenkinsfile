@@ -645,8 +645,7 @@ CMD ["java", "-jar", "app.jar"]
             def dockerImage =
                 "deepak97813/${params.APP_ID}:${env.BUILD_NUMBER}"
 
-            echo "Pushing Docker image:"
-            echo dockerImage
+            echo "Pushing Docker image: ${dockerImage}"
 
             withCredentials([
                 usernamePassword(
@@ -663,30 +662,30 @@ CMD ["java", "-jar", "app.jar"]
                     bat '''
                         @echo off
 
-                        echo Docker username received: %DOCKER_USER%
+                        echo ==============================
+                        echo Docker Hub Authentication
+                        echo ==============================
 
-                        echo Logging in to Docker Hub...
+                        echo Username: %DOCKER_USER%
 
-                        echo %DOCKER_PASSWORD% | docker login docker.io -u "%DOCKER_USER%" --password-stdin
+                        powershell -NoProfile -Command "$env:DOCKER_PASSWORD | docker login docker.io -u $env:DOCKER_USER --password-stdin"
 
                         if errorlevel 1 (
-                            echo Docker Hub login FAILED
+                            echo LOGIN FAILED
                             exit /b 1
                         )
 
-                        echo Docker Hub login SUCCESSFUL
-
-                        echo Pushing Docker image:
-                        echo %DOCKER_IMAGE%
+                        echo LOGIN SUCCESSFUL
+                        echo Pushing: %DOCKER_IMAGE%
 
                         docker push %DOCKER_IMAGE%
 
                         if errorlevel 1 (
-                            echo Docker image push FAILED
+                            echo PUSH FAILED
                             exit /b 1
                         )
 
-                        echo Docker image push SUCCESSFUL
+                        echo PUSH SUCCESSFUL
                     '''
                 }
             }
