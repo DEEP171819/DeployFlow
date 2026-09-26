@@ -520,9 +520,16 @@ CMD ["npm", "start"]
 
                         } else if (projectType == 'python') {
 
-                            writeFile(
-                                file: "${serviceDir}\\Dockerfile",
-                                text: """FROM python:3.12-slim
+    def startCommand =
+        analysis['START_COMMAND'] ?: ''
+
+    if (!startCommand) {
+        error "Python project detected but no start command was found."
+    }
+
+    writeFile(
+        file: "${serviceDir}\\Dockerfile",
+        text: """FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -534,9 +541,9 @@ COPY . .
 
 EXPOSE ${port}
 
-CMD ["python", "app.py"]
+CMD ["sh", "-c", "${startCommand}"]
 """
-                            )
+    )
 
                         } else if (projectType == 'go') {
 
