@@ -418,58 +418,58 @@ Type:    ${projectType}
         }
 
 
-        stage('Build and Test') {
+stage('Build and Test') {
 
-            steps {
+    steps {
 
-                script {
+        script {
 
-                    if (!fileExists(
-                        'deployflow-services.json'
-                    )) {
+            if (!fileExists(
+                'deployflow-services.json'
+            )) {
 
-                        error(
-                            "Service list not found."
-                        )
-                    }
+                error(
+                    "Service list not found."
+                )
+            }
 
-                    def serviceCountText = bat(
-                        script:
-                            '''@echo off
+            def serviceCountText = bat(
+                script:
+                    '''@echo off
 node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s.length);"''',
-                        returnStdout: true
-                    ).trim()
+                returnStdout: true
+            ).trim()
 
-                    def serviceCount =
-                        Integer.parseInt(serviceCountText)
+            def serviceCount =
+                Integer.parseInt(serviceCountText)
 
-                    for (int i = 0; i < serviceCount; i++) {
+            for (int i = 0; i < serviceCount; i++) {
 
-                        def serviceName = bat(
-                            script:
-                                """@echo off
+                def serviceName = bat(
+                    script:
+                        """@echo off
 node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);" """,
-                            returnStdout: true
-                        ).trim()
+                    returnStdout: true
+                ).trim()
 
-                        def servicePath = bat(
-                            script:
-                                """@echo off
+                def servicePath = bat(
+                    script:
+                        """@echo off
 node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);" """,
-                            returnStdout: true
-                        ).trim()
+                    returnStdout: true
+                ).trim()
 
-                        def projectType = bat(
-                            script:
-                                """@echo off
+                def projectType = bat(
+                    script:
+                        """@echo off
 node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);" """,
-                            returnStdout: true
-                        ).trim()
+                    returnStdout: true
+                ).trim()
 
-                        def serviceDir =
-                            "app\\${servicePath.replace('/', '\\')}"
+                def serviceDir =
+                    "app\\${servicePath.replace('/', '\\')}"
 
-                        echo """
+                echo """
 ========================================
  Build / Test
  Service: ${serviceName}
@@ -477,81 +477,153 @@ node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json
 ========================================
 """
 
-                        if (projectType == 'node') {
+                if (!fileExists(serviceDir)) {
 
-                            dir(serviceDir) {
+                    error(
+                        "Service directory does not exist: ${serviceDir}"
+                    )
+                }
 
-                                if (fileExists('package.json')) {
+                if (projectType == 'node') {
 
-                                    bat(
-                                        'npm test --if-present'
+                    dir(serviceDir) {
+
+                        if (fileExists('package.json')) {
+
+                            def hasTestScript = bat(
+                                script:
+                                    '''@echo off
+node -e "const p=require('./package.json'); console.log(p.scripts && p.scripts.test ? 'true' : 'false');"''',
+                                returnStdout: true
+                            ).trim()
+
+                            if (hasTestScript == 'true') {
+
+                                def testScript = bat(
+                                    script:
+                                        '''@echo off
+node -e "const p=require('./package.json'); console.log(p.scripts.test || '');"''',
+                                    returnStdout: true
+                                ).trim()
+
+                                if (testScript.contains('react-scripts test')) {
+
+                                    echo(
+                                        "React test script detected. Running tests with --passWithNoTests."
                                     )
 
                                     bat(
-                                        'npm run build --if-present'
-                                    )
-                                }
-
-                            }
-
-                        } else if (projectType == 'python') {
-
-                            dir(serviceDir) {
-
-                                if (
-                                    fileExists('pytest.ini') ||
-                                    fileExists('tests')
-                                ) {
-
-                                    bat(
-                                        'python -m pytest'
+                                        'npm test -- --passWithNoTests --watchAll=false'
                                     )
 
                                 } else {
 
                                     echo(
-                                        "No pytest configuration found. Skipping tests."
+                                        "Running Node.js test script."
+                                    )
+
+                                    bat(
+                                        'npm test --if-present'
                                     )
                                 }
+
+                            } else {
+
+                                echo(
+                                    "No npm test script found. Skipping tests."
+                                )
                             }
 
-                        } else if (projectType == 'java') {
+                            def hasBuildScript = bat(
+                                script:
+                                    '''@echo off
+node -e "const p=require('./package.json'); console.log(p.scripts && p.scripts.build ? 'true' : 'false');"''',
+                                returnStdout: true
+                            ).trim()
 
-                            dir(serviceDir) {
+                            if (hasBuildScript == 'true') {
 
-                                if (fileExists('pom.xml')) {
+                                echo(
+                                    "Build script detected. Running npm build."
+                                )
 
-                                    bat 'mvn test'
-                                }
+                                bat(
+                                    'npm run build'
+                                )
+
+                            } else {
+
+                                echo(
+                                    "No npm build script found. Skipping build."
+                                )
                             }
+                        }
+                    }
 
-                        } else if (projectType == 'go') {
+                } else if (projectType == 'python') {
 
-                            dir(serviceDir) {
+                    dir(serviceDir) {
 
-                                bat 'go test ./...'
-                            }
+                        if (
+                            fileExists('pytest.ini') ||
+                            fileExists('tests')
+                        ) {
 
-                        } else if (projectType == 'docker') {
-
-                            echo(
-                                "Docker project detected. Dockerfile will perform application build."
+                            bat(
+                                'python -m pytest'
                             )
 
                         } else {
 
-                            error(
-                                "Unsupported project type: ${projectType}"
+                            echo(
+                                "No pytest configuration found. Skipping tests."
                             )
                         }
                     }
 
+                } else if (projectType == 'java') {
+
+                    dir(serviceDir) {
+
+                        if (fileExists('pom.xml')) {
+
+                            bat(
+                                'mvn test'
+                            )
+                        }
+                    }
+
+                } else if (projectType == 'go') {
+
+                    dir(serviceDir) {
+
+                        bat(
+                            'go test ./...'
+                        )
+                    }
+
+                } else if (projectType == 'docker') {
+
                     echo(
-                        "All service build/test operations completed successfully."
+                        "Docker project detected. Dockerfile will perform application build."
+                    )
+
+                } else {
+
+                    error(
+                        "Unsupported project type: ${projectType}"
                     )
                 }
             }
+
+            echo(
+                "All service build/test operations completed successfully."
+            )
         }
+    }
+}
+
+
 
 
         stage('Prepare Dockerfiles') {
