@@ -732,6 +732,23 @@ node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json
                             def outputDir =
                                 outputDirectory ?: 'build'
 
+                            
+                            def safeServiceName =
+    serviceName
+        .toLowerCase()
+        .replaceAll('[^a-z0-9-]+', '-')
+        .replaceAll('^-+', '')
+        .replaceAll('-+$', '')
+
+if (!safeServiceName) {
+    safeServiceName =
+        "service-${i + 1}"
+}
+
+def serviceAppId =
+    "${params.APP_ID}-${safeServiceName}"
+
+
                             def reactBuildCommand =
                                 framework?.toLowerCase() == 'react'
                                     ? "ENV PUBLIC_URL=/${serviceAppId}"
