@@ -732,6 +732,11 @@ node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json
                             def outputDir =
                                 outputDirectory ?: 'build'
 
+                            def reactBuildCommand =
+                                framework?.toLowerCase() == 'react'
+                                    ? "ENV PUBLIC_URL=/${serviceAppId}"
+                                    : ""
+
                             writeFile(
                                 file: "${serviceDir}\\Dockerfile",
                                 text: """FROM node:22-alpine AS builder
@@ -744,6 +749,8 @@ RUN npm install
 
 COPY . .
 
+${reactBuildCommand}
+
 RUN npm run build
 
 FROM nginx:alpine
@@ -753,26 +760,6 @@ COPY --from=builder /app/${outputDir} /usr/share/nginx/html
 EXPOSE ${port}
 
 CMD ["nginx", "-g", "daemon off;"]
-"""
-                            )
-
-                        } else if (projectType == 'node') {
-
-                            writeFile(
-                                file: "${serviceDir}\\Dockerfile",
-                                text: """FROM node:22-alpine
-
-WORKDIR /app
-
-COPY package*.json ./
-
-RUN npm install
-
-COPY . .
-
-EXPOSE ${port}
-
-CMD ["npm", "start"]
 """
                             )
 
