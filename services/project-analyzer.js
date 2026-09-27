@@ -1,3 +1,4 @@
+
 const fs = require("fs");
 const path = require("path");
 
@@ -210,6 +211,170 @@ function detectNodePort(projectDir, packageJson, fallback = 3000) {
     return fallback;
 }
 
+function detectHealthPath(projectDir, packageJson = null) {
+    /*
+     * Explicit DeployFlow configuration has highest priority.
+     *
+     * Example:
+     * "deployflow": {
+     *     "healthPath": "/api/health"
+     * }
+     */
+    if (
+        packageJson &&
+        packageJson.deployflow &&
+        typeof packageJson.deployflow.healthPath === "string" &&
+        packageJson.deployflow.healthPath.startsWith("/")
+    ) {
+        return packageJson.deployflow.healthPath;
+    }
+
+    /*
+     * Common health endpoints.
+     */
+    const commonHealthPaths = [
+        "/api/health",
+        "/health",
+        "/healthz",
+        "/api/healthz",
+        "/ready",
+        "/readiness",
+        "/live",
+        "/liveness"
+    ];
+
+    /*
+     * Common Node.js application files.
+     */
+    const sourceFiles = [
+        "server.js",
+        "app.js",
+        "index.js",
+        "main.js",
+        "routes.js",
+        "src/server.js",
+        "src/app.js",
+        "src/index.js",
+        "src/main.js",
+        "src/routes.js"
+    ];
+
+    let source = "";
+
+    for (const sourceFile of sourceFiles) {
+        const filePath =
+            path.join(
+                projectDir,
+                sourceFile
+            );
+
+        if (!fs.existsSync(filePath)) {
+            continue;
+        }
+
+        source +=
+            "\n" +
+            fs.readFileSync(
+                filePath,
+                "utf8"
+            );
+    }
+
+    /*
+     * Detect actual Express-style route declarations.
+     *
+     * Examples:
+     *
+     * app.get("/api/health", ...)
+     * router.get("/health", ...)
+     * app.head("/healthz", ...)
+     * app.use("/api/health", ...)
+     */
+    for (const healthPath of commonHealthPaths) {
+
+        const escapedPath =
+            healthPath.replace(
+                /[.*+?^${}()|[\]\\]/g,
+                "\\$&"
+            );
+
+        const routePattern =
+            new RegExp(
+                `(?:app|router|server)\\.(?:get|head|use)\\s*\\(\\s*["'\`]${escapedPath}["'\`]`,
+                "i"
+            );
+
+        if (routePattern.test(source)) {
+            return healthPath;
+        }
+    }
+
+    /*
+     * Detect FastAPI / Flask style routes.
+     *
+     * FastAPI:
+     * @app.get("/health")
+     *
+     * Flask:
+     * @app.route("/health")
+     */
+    const pythonFiles = [
+        "main.py",
+        "app.py",
+        "server.py",
+        "application.py"
+    ];
+
+    let pythonSource = "";
+
+    for (const pythonFile of pythonFiles) {
+
+        const filePath =
+            path.join(
+                projectDir,
+                pythonFile
+            );
+
+        if (!fs.existsSync(filePath)) {
+            continue;
+        }
+
+        pythonSource +=
+            "\n" +
+            fs.readFileSync(
+                filePath,
+                "utf8"
+            );
+    }
+
+    for (const healthPath of commonHealthPaths) {
+
+        const escapedPath =
+            healthPath.replace(
+                /[.*+?^${}()|[\]\\]/g,
+                "\\$&"
+            );
+
+        const pythonRoutePattern =
+            new RegExp(
+                `@(app|router)\\.(?:get|post|head|route)\\s*\\(\\s*["'\`]${escapedPath}["'\`]`,
+                "i"
+            );
+
+        if (pythonRoutePattern.test(pythonSource)) {
+            return healthPath;
+        }
+    }
+
+    /*
+     * Fallback.
+     *
+     * If no health endpoint can be detected,
+     * use the root path.
+     */
+    return "/";
+}
+
 function detectNode(projectDir, packageJson) {
     const scripts = packageJson.scripts || {};
 
@@ -256,11 +421,15 @@ function detectNode(projectDir, packageJson) {
                 `${commands.run} start`,
             port:
                 detectNodePort(
-    projectDir,
-    packageJson,
-    3000
-),
-            healthPath: "/",
+                    projectDir,
+                    packageJson,
+                    3000
+                ),
+            healthPath:
+                detectHealthPath(
+                    projectDir,
+                    packageJson
+                ),
             isStatic: false,
             outputDirectory: ".next",
             existingDockerfile: false
@@ -315,13 +484,15 @@ function detectNode(projectDir, packageJson) {
             `${commands.run} start`,
         port:
             detectNodePort(
-    projectDir,
-    packageJson,
-    3000
-),
+                projectDir,
+                packageJson,
+                3000
+            ),
         healthPath:
-            packageJson.deployflow?.healthPath ||
-            "/",
+            detectHealthPath(
+                projectDir,
+                packageJson
+            ),
         isStatic: false,
         outputDirectory: null,
         existingDockerfile: false
@@ -379,7 +550,8 @@ function detectPython(projectDir) {
             "pip install -r requirements.txt",
         startCommand,
         port,
-        healthPath: "/",
+        healthPath:
+            detectHealthPath(projectDir),
         isStatic: false,
         outputDirectory: null,
         existingDockerfile: false
@@ -520,7 +692,6 @@ function analyzeProject(projectDir) {
     );
 }
 
-
 function analyzeRepository(repositoryDir) {
     if (!fs.existsSync(repositoryDir)) {
         throw new Error(
@@ -528,9 +699,13 @@ function analyzeRepository(repositoryDir) {
         );
     }
 
-    // First check whether the repository itself is a deployable application.
+    /*
+     * First check whether the repository itself
+     * is a deployable application.
+     */
     try {
-        const rootAnalysis = analyzeProject(repositoryDir);
+        const rootAnalysis =
+            analyzeProject(repositoryDir);
 
         return {
             type: "single-service",
@@ -543,13 +718,20 @@ function analyzeRepository(repositoryDir) {
             ]
         };
     } catch (rootError) {
-        // Root is not directly deployable.
-        // Continue looking for services inside subdirectories.
+        /*
+         * Root is not directly deployable.
+         * Continue looking for services inside
+         * subdirectories.
+         */
     }
 
-    const entries = fs.readdirSync(repositoryDir, {
-        withFileTypes: true
-    });
+    const entries =
+        fs.readdirSync(
+            repositoryDir,
+            {
+                withFileTypes: true
+            }
+        );
 
     const services = [];
 
@@ -558,9 +740,12 @@ function analyzeRepository(repositoryDir) {
             continue;
         }
 
-        const directoryName = entry.name;
+        const directoryName =
+            entry.name;
 
-        // Ignore common non-service directories.
+        /*
+         * Ignore common non-service directories.
+         */
         if (
             directoryName === "node_modules" ||
             directoryName === ".git" ||
@@ -576,7 +761,10 @@ function analyzeRepository(repositoryDir) {
         }
 
         const servicePath =
-            path.join(repositoryDir, directoryName);
+            path.join(
+                repositoryDir,
+                directoryName
+            );
 
         try {
             const analysis =
@@ -589,7 +777,9 @@ function analyzeRepository(repositoryDir) {
             });
 
         } catch (error) {
-            // Directory is not a deployable service.
+            /*
+             * Directory is not a deployable service.
+             */
             continue;
         }
     }
@@ -607,23 +797,29 @@ function analyzeRepository(repositoryDir) {
 }
 
 if (require.main === module) {
-    const projectDir = process.argv[2] || ".";
+    const projectDir =
+        process.argv[2] || ".";
 
     try {
         const result =
             analyzeRepository(projectDir);
 
         console.log(
-            JSON.stringify(result, null, 2)
+            JSON.stringify(
+                result,
+                null,
+                2
+            )
         );
 
     } catch (error) {
-        console.error(error.message);
+        console.error(
+            error.message
+        );
+
         process.exit(1);
     }
 }
-
-
 
 module.exports = {
     analyzeProject,
