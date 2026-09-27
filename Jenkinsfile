@@ -627,136 +627,67 @@ node -e "const p=require('./package.json'); console.log(p.scripts && p.scripts.b
 
 
         stage('Prepare Dockerfiles') {
+    steps {
+        script {
 
-            steps {
+            services.eachWithIndex { service, i ->
 
-                script {
+                def serviceName = service.name
+                def serviceDir = service.path ?: '.'
+                def projectType = service.type
+                def framework = service.framework ?: ''
+                def port = service.port ?: 3000
+                def isStatic = service.isStatic?.toString() ?: 'false'
+                def outputDirectory = service.outputDirectory
+                def existingDockerfile = service.existingDockerfile?.toString() ?: 'false'
 
-                    def serviceCountText = bat(
-                        script:
-                            '''@echo off
-node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s.length);"''',
-                        returnStdout: true
-                    ).trim()
-
-                    def serviceCount =
-                        Integer.parseInt(serviceCountText)
-
-                    for (int i = 0; i < serviceCount; i++) {
-
-                        def serviceName = bat(
-                            script:
-                                """@echo off
-node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);" """,
-                            returnStdout: true
-                        ).trim()
-
-                        def servicePath = bat(
-                            script:
-                                """@echo off
-node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);" """,
-                            returnStdout: true
-                        ).trim()
-
-                        def projectType = bat(
-                            script:
-                                """@echo off
-node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);" """,
-                            returnStdout: true
-                        ).trim()
-
-                        def framework = bat(
-                            script:
-                                """@echo off
-node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].framework||'');" """,
-                            returnStdout: true
-                        ).trim()
-
-                        def port = bat(
-                            script:
-                                """@echo off
-node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].port||3000);" """,
-                            returnStdout: true
-                        ).trim()
-
-                        def startCommand = bat(
-                            script:
-                                """@echo off
-node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].startCommand||'');" """,
-                            returnStdout: true
-                        ).trim()
-
-                        def isStatic = bat(
-                            script:
-                                """@echo off
-node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].isStatic?'true':'false');" """,
-                            returnStdout: true
-                        ).trim()
-
-                        def outputDirectory = bat(
-                            script:
-                                """@echo off
-node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].outputDirectory||'');" """,
-                            returnStdout: true
-                        ).trim()
-
-                        def existingDockerfile = bat(
-                            script:
-                                """@echo off
-node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].existingDockerfile?'true':'false');" """,
-                            returnStdout: true
-                        ).trim()
-
-                        def serviceDir =
-                            "app\\${servicePath.replace('/', '\\')}"
-
-                        echo """
+                echo """
 ========================================
- Preparing Dockerfile
- Service:  ${serviceName}
- Type:     ${projectType}
- Framework:${framework}
- Port:     ${port}
- Static:   ${isStatic}
+Preparing Dockerfile
+Service:  ${serviceName}
+Type:     ${projectType}
+Framework:${framework}
+Port:     ${port}
+Static:   ${isStatic}
 ========================================
 """
 
-                        if (existingDockerfile == 'true') {
+                dir(serviceDir) {
 
-                            echo(
-                                "Existing Dockerfile detected for ${serviceName}. Keeping it."
-                            )
+                    if (existingDockerfile == 'true') {
 
-                        } else if (projectType == 'node' && isStatic == 'true') {
+                        echo(
+                            "Existing Dockerfile detected for ${serviceName}. Keeping it."
+                        )
 
-                            def outputDir =
-                                outputDirectory ?: 'build'
+                    } else if (projectType == 'node' && isStatic == 'true') {
 
-                            
-                            def safeServiceName =
-    serviceName
-        .toLowerCase()
-        .replaceAll('[^a-z0-9-]+', '-')
-        .replaceAll('^-+', '')
-        .replaceAll('-+$', '')
+                        def outputDir =
+                            outputDirectory ?: 'build'
 
-if (!safeServiceName) {
-    safeServiceName =
-        "service-${i + 1}"
-}
+                        def safeServiceName =
+                            serviceName
+                                .toLowerCase()
+                                .replaceAll('[^a-z0-9-]+', '-')
+                                .replaceAll('^-+', '')
+                                .replaceAll('-+$', '')
 
-def serviceAppId =
-    "${params.APP_ID}-${safeServiceName}"
+                        if (!safeServiceName) {
+                            safeServiceName =
+                                "service-${i + 1}"
+                        }
 
+                        def serviceAppId =
+                            "${params.APP_ID}-${safeServiceName}"
 
-                            def reactBuildCommand =
-                                framework?.toLowerCase() == 'react'
-                                    ? "ENV PUBLIC_URL=/${serviceAppId}"
-                                    : ""
+                        def reactBuildCommand =
+                            framework?.toLowerCase() == 'react'
+                                ? "ENV PUBLIC_URL=/${serviceAppId}"
+                                : ""
 
-                            writeFile(
-                                file: "${serviceDir}\\Dockerfile",
-                                text: """FROM node:22-alpine AS builder
+                        writeFile(
+                            file: "Dockerfile",
+                            text: """FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -778,20 +709,41 @@ EXPOSE ${port}
 
 CMD ["nginx", "-g", "daemon off;"]
 """
-                            )
+                        )
 
-                        } else if (projectType == 'python') {
+                        echo(
+                            "Dockerfile generated successfully for ${serviceName}."
+                        )
 
-                            if (!startCommand) {
+                    } else if (projectType == 'node') {
 
-                                error(
-                                    "Python service ${serviceName} has no detected start command."
-                                )
-                            }
+                        writeFile(
+                            file: "Dockerfile",
+                            text: """FROM node:22-alpine
 
-                            writeFile(
-                                file: "${serviceDir}\\Dockerfile",
-                                text: """FROM python:3.12-slim
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN npm install
+
+COPY . .
+
+EXPOSE ${port}
+
+CMD ["sh", "-c", "${service.startCommand}"]
+"""
+                        )
+
+                        echo(
+                            "Dockerfile generated successfully for ${serviceName}."
+                        )
+
+                    } else if (projectType == 'python') {
+
+                        writeFile(
+                            file: "Dockerfile",
+                            text: """FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -803,91 +755,27 @@ COPY . .
 
 EXPOSE ${port}
 
-CMD ["sh", "-c", "${startCommand}"]
+CMD ["sh", "-c", "${service.startCommand}"]
 """
-                            )
+                        )
 
-                        } else if (projectType == 'go') {
+                        echo(
+                            "Dockerfile generated successfully for ${serviceName}."
+                        )
 
-                            writeFile(
-                                file: "${serviceDir}\\Dockerfile",
-                                text: """FROM golang:1.25 AS builder
+                    } else {
 
-WORKDIR /app
-
-COPY . .
-
-RUN go build -o app .
-
-FROM debian:bookworm-slim
-
-WORKDIR /app
-
-COPY --from=builder /app/app .
-
-EXPOSE ${port}
-
-CMD ["./app"]
-"""
-                            )
-
-                        } else if (projectType == 'java') {
-
-                            if (fileExists("${serviceDir}\\pom.xml")) {
-
-                                writeFile(
-                                    file: "${serviceDir}\\Dockerfile",
-                                    text: """FROM maven:3.9-eclipse-temurin-21 AS builder
-
-WORKDIR /app
-
-COPY pom.xml .
-
-RUN mvn dependency:go-offline
-
-COPY . .
-
-RUN mvn package -DskipTests
-
-FROM eclipse-temurin:21-jre
-
-WORKDIR /app
-
-COPY --from=builder /app/target/*.jar app.jar
-
-EXPOSE ${port}
-
-CMD ["java", "-jar", "app.jar"]
-"""
-                                )
-
-                            } else {
-
-                                error(
-                                    "Java service ${serviceName} does not contain pom.xml."
-                                )
-                            }
-
-                        } else if (projectType == 'docker') {
-
-                            echo(
-                                "Docker project detected. Existing Dockerfile is expected."
-                            )
-
-                        } else {
-
-                            error(
-                                "Cannot generate Dockerfile for ${serviceName}."
-                            )
-                        }
+                        error(
+                            "Cannot generate Dockerfile for ${serviceName}. Unsupported project type: ${projectType}"
+                        )
                     }
-
-                    echo(
-                        "Dockerfiles prepared for all services."
-                    )
                 }
             }
+
+            echo "All Dockerfiles prepared successfully."
         }
+    }
+}
 
 
         stage('Build Docker Images') {
