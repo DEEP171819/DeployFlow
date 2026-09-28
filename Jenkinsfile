@@ -763,9 +763,20 @@ CMD ["nginx", "-g", "daemon off;"]
 
                             } else if (projectType == 'node') {
 
-                                writeFile(
-                                    file: "Dockerfile",
-                                    text: """FROM node:22-alpine
+    def nodeStartCommand =
+        service.startCommand ?: "node app.js"
+
+    if (nodeStartCommand.startsWith("nodemon ")) {
+        nodeStartCommand =
+            nodeStartCommand.replaceFirst(
+                "^nodemon\\s+",
+                "node "
+            )
+    }
+
+    writeFile(
+        file: "Dockerfile",
+        text: """FROM node:22-alpine
 
 WORKDIR /app
 
@@ -777,9 +788,9 @@ COPY . .
 
 EXPOSE ${port}
 
-CMD ["sh", "-c", "${service.startCommand}"]
+CMD ["sh", "-c", "${nodeStartCommand}"]
 """
-                                )
+    )
 
                                 echo(
                                     "Dockerfile generated successfully for ${serviceName}."
