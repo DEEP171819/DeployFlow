@@ -630,6 +630,25 @@ node -e "const p=require('./package.json'); console.log(p.scripts && p.scripts.b
     steps {
         script {
 
+            if (!fileExists('deployflow-services.json')) {
+                error(
+                    "deployflow-services.json not found. Project analysis must run first."
+                )
+            }
+
+            def servicesJson =
+                readFile(
+                    'deployflow-services.json'
+                ).trim()
+
+            def services =
+                new groovy.json.JsonSlurperClassic()
+                    .parseText(servicesJson)
+
+            echo(
+                "Preparing Dockerfiles for ${services.size()} detected services."
+            )
+
             services.eachWithIndex { service, i ->
 
                 def serviceName = service.name
