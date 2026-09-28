@@ -15,7 +15,7 @@ app.use(morgan("combined"));
 app.use(express.json());
 app.use(express.static("public"));
 
-const JENKINS_URL = "http://localhost:8080";
+const JENKINS_URL = "http://host.docker.internal:8080";
 const JENKINS_USER = process.env.JENKINS_USER;
 const JENKINS_API_TOKEN = process.env.JENKINS_API_TOKEN;
 
