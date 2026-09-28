@@ -499,40 +499,56 @@ node -e "const p=require('./package.json'); console.log(p.scripts && p.scripts.t
 
                                     if (hasTestScript == 'true') {
 
-                                        def testScript = bat(
-                                            script:
-                                                '''@echo off
+    def testScript = bat(
+        script:
+            '''@echo off
 node -e "const p=require('./package.json'); console.log(p.scripts.test || '');"''',
-                                            returnStdout: true
-                                        ).trim()
+        returnStdout: true
+    ).trim()
 
-                                        if (testScript.contains('react-scripts test')) {
+    def normalizedTestScript =
+        testScript
+            .toLowerCase()
+            .replaceAll(/\s+/, ' ')
+            .trim()
 
-                                            echo(
-                                                "React test script detected. Running tests with --passWithNoTests."
-                                            )
+    if (
+        normalizedTestScript.contains('no test specified') ||
+        normalizedTestScript.contains('echo "error: no test specified"') ||
+        normalizedTestScript.contains("echo 'error: no test specified'")
+    ) {
 
-                                            bat(
-                                                'npm test -- --passWithNoTests --watchAll=false'
-                                            )
+        echo(
+            "Placeholder npm test script detected. Skipping tests."
+        )
 
-                                        } else {
+    } else if (normalizedTestScript.contains('react-scripts test')) {
 
-                                            echo(
-                                                "Running Node.js test script."
-                                            )
+        echo(
+            "React test script detected. Running tests with --passWithNoTests."
+        )
 
-                                            bat(
-                                                'npm test --if-present'
-                                            )
-                                        }
+        bat(
+            'npm test -- --passWithNoTests --watchAll=false'
+        )
 
-                                    } else {
+    } else {
 
-                                        echo(
-                                            "No npm test script found. Skipping tests."
-                                        )
-                                    }
+        echo(
+            "Running Node.js test script."
+        )
+
+        bat(
+            'npm test --if-present'
+        )
+    }
+
+} else {
+
+    echo(
+        "No npm test script found. Skipping tests."
+    )
+}
 
                                     def hasBuildScript = bat(
                                         script:
