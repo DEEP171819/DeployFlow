@@ -291,19 +291,61 @@ Set-Content `
 # Ingress
 # ============================================================
 
-$ingressTemplate =
-    Get-Content "k8s\ingress.yaml" -Raw
+if ($isStatic -eq "true") {
 
-$ingressRendered =
-    $ingressTemplate `
-        -replace "APP_ID", $appId `
-        -replace "APP_PORT", $portNumber
+    $ingressRendered = @"
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: $appId-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /`$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: $appId.localhost
+      http:
+        paths:
+          - path: /$appId(/|`$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: $appId-service
+                port:
+                  number: $portNumber
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: $appId-service
+                port:
+                  number: $portNumber
+"@
 
-Set-Content `
-    "k8s\ingress-rendered.yaml" `
-    $ingressRendered
+} else {
 
+    $ingressTemplate =
+        Get-Content "k8s\ingress.yaml" -Raw
 
+    $ingressRendered =
+        $ingressTemplate `
+            -replace "APP_ID", $appId `
+            -replace "APP_PORT", $portNumber
+}
+
+if ($isStatic -eq "true") {
+
+    Set-Content `
+        "k8s\ingress-rendered.yaml" `
+        $ingressRendered
+
+} else {
+
+    Set-Content `
+        "k8s\ingress-rendered.yaml" `
+        $ingressRendered
+}
 # ============================================================
 # Output
 # ============================================================
