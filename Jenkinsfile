@@ -418,58 +418,58 @@ Type:    ${projectType}
         }
 
 
-stage('Build and Test') {
+        stage('Build and Test') {
 
-    steps {
+            steps {
 
-        script {
+                script {
 
-            if (!fileExists(
-                'deployflow-services.json'
-            )) {
+                    if (!fileExists(
+                        'deployflow-services.json'
+                    )) {
 
-                error(
-                    "Service list not found."
-                )
-            }
+                        error(
+                            "Service list not found."
+                        )
+                    }
 
-            def serviceCountText = bat(
-                script:
-                    '''@echo off
+                    def serviceCountText = bat(
+                        script:
+                            '''@echo off
 node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s.length);"''',
-                returnStdout: true
-            ).trim()
+                        returnStdout: true
+                    ).trim()
 
-            def serviceCount =
-                Integer.parseInt(serviceCountText)
+                    def serviceCount =
+                        Integer.parseInt(serviceCountText)
 
-            for (int i = 0; i < serviceCount; i++) {
+                    for (int i = 0; i < serviceCount; i++) {
 
-                def serviceName = bat(
-                    script:
-                        """@echo off
+                        def serviceName = bat(
+                            script:
+                                """@echo off
 node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].name);" """,
-                    returnStdout: true
-                ).trim()
+                            returnStdout: true
+                        ).trim()
 
-                def servicePath = bat(
-                    script:
-                        """@echo off
+                        def servicePath = bat(
+                            script:
+                                """@echo off
 node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].path);" """,
-                    returnStdout: true
-                ).trim()
+                            returnStdout: true
+                        ).trim()
 
-                def projectType = bat(
-                    script:
-                        """@echo off
+                        def projectType = bat(
+                            script:
+                                """@echo off
 node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json','utf8')); console.log(s[${i}].type);" """,
-                    returnStdout: true
-                ).trim()
+                            returnStdout: true
+                        ).trim()
 
-                def serviceDir =
-                    "app\\${servicePath.replace('/', '\\')}"
+                        def serviceDir =
+                            "app\\${servicePath.replace('/', '\\')}"
 
-                echo """
+                        echo """
 ========================================
  Build / Test
  Service: ${serviceName}
@@ -477,190 +477,195 @@ node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json
 ========================================
 """
 
-                if (!fileExists(serviceDir)) {
+                        if (!fileExists(serviceDir)) {
 
-                    error(
-                        "Service directory does not exist: ${serviceDir}"
-                    )
-                }
+                            error(
+                                "Service directory does not exist: ${serviceDir}"
+                            )
+                        }
 
-                if (projectType == 'node') {
+                        if (projectType == 'node') {
 
-                    dir(serviceDir) {
+                            dir(serviceDir) {
 
-                        if (fileExists('package.json')) {
+                                if (fileExists('package.json')) {
 
-                            def hasTestScript = bat(
-                                script:
-                                    '''@echo off
+                                    def hasTestScript = bat(
+                                        script:
+                                            '''@echo off
 node -e "const p=require('./package.json'); console.log(p.scripts && p.scripts.test ? 'true' : 'false');"''',
-                                returnStdout: true
-                            ).trim()
+                                        returnStdout: true
+                                    ).trim()
 
-                            if (hasTestScript == 'true') {
+                                    if (hasTestScript == 'true') {
 
-                                def testScript = bat(
-                                    script:
-                                        '''@echo off
+                                        def testScript = bat(
+                                            script:
+                                                '''@echo off
 node -e "const p=require('./package.json'); console.log(p.scripts.test || '');"''',
-                                    returnStdout: true
-                                ).trim()
+                                            returnStdout: true
+                                        ).trim()
 
-                                if (testScript.contains('react-scripts test')) {
+                                        if (testScript.contains('react-scripts test')) {
 
-                                    echo(
-                                        "React test script detected. Running tests with --passWithNoTests."
-                                    )
+                                            echo(
+                                                "React test script detected. Running tests with --passWithNoTests."
+                                            )
+
+                                            bat(
+                                                'npm test -- --passWithNoTests --watchAll=false'
+                                            )
+
+                                        } else {
+
+                                            echo(
+                                                "Running Node.js test script."
+                                            )
+
+                                            bat(
+                                                'npm test --if-present'
+                                            )
+                                        }
+
+                                    } else {
+
+                                        echo(
+                                            "No npm test script found. Skipping tests."
+                                        )
+                                    }
+
+                                    def hasBuildScript = bat(
+                                        script:
+                                            '''@echo off
+node -e "const p=require('./package.json'); console.log(p.scripts && p.scripts.build ? 'true' : 'false');"''',
+                                        returnStdout: true
+                                    ).trim()
+
+                                    if (hasBuildScript == 'true') {
+
+                                        echo(
+                                            "Build script detected. Running npm build."
+                                        )
+
+                                        bat(
+                                            'npm run build'
+                                        )
+
+                                    } else {
+
+                                        echo(
+                                            "No npm build script found. Skipping build."
+                                        )
+                                    }
+                                }
+                            }
+
+                        } else if (projectType == 'python') {
+
+                            dir(serviceDir) {
+
+                                if (
+                                    fileExists('pytest.ini') ||
+                                    fileExists('tests')
+                                ) {
 
                                     bat(
-                                        'npm test -- --passWithNoTests --watchAll=false'
+                                        'python -m pytest'
                                     )
 
                                 } else {
 
                                     echo(
-                                        "Running Node.js test script."
-                                    )
-
-                                    bat(
-                                        'npm test --if-present'
+                                        "No pytest configuration found. Skipping tests."
                                     )
                                 }
-
-                            } else {
-
-                                echo(
-                                    "No npm test script found. Skipping tests."
-                                )
                             }
 
-                            def hasBuildScript = bat(
-                                script:
-                                    '''@echo off
-node -e "const p=require('./package.json'); console.log(p.scripts && p.scripts.build ? 'true' : 'false');"''',
-                                returnStdout: true
-                            ).trim()
+                        } else if (projectType == 'java') {
 
-                            if (hasBuildScript == 'true') {
+                            dir(serviceDir) {
 
-                                echo(
-                                    "Build script detected. Running npm build."
-                                )
+                                if (fileExists('pom.xml')) {
+
+                                    bat(
+                                        'mvn test'
+                                    )
+                                }
+                            }
+
+                        } else if (projectType == 'go') {
+
+                            dir(serviceDir) {
 
                                 bat(
-                                    'npm run build'
-                                )
-
-                            } else {
-
-                                echo(
-                                    "No npm build script found. Skipping build."
+                                    'go test ./...'
                                 )
                             }
-                        }
-                    }
 
-                } else if (projectType == 'python') {
+                        } else if (projectType == 'docker') {
 
-                    dir(serviceDir) {
-
-                        if (
-                            fileExists('pytest.ini') ||
-                            fileExists('tests')
-                        ) {
-
-                            bat(
-                                'python -m pytest'
+                            echo(
+                                "Docker project detected. Dockerfile will perform application build."
                             )
 
                         } else {
 
-                            echo(
-                                "No pytest configuration found. Skipping tests."
+                            error(
+                                "Unsupported project type: ${projectType}"
                             )
                         }
                     }
-
-                } else if (projectType == 'java') {
-
-                    dir(serviceDir) {
-
-                        if (fileExists('pom.xml')) {
-
-                            bat(
-                                'mvn test'
-                            )
-                        }
-                    }
-
-                } else if (projectType == 'go') {
-
-                    dir(serviceDir) {
-
-                        bat(
-                            'go test ./...'
-                        )
-                    }
-
-                } else if (projectType == 'docker') {
 
                     echo(
-                        "Docker project detected. Dockerfile will perform application build."
-                    )
-
-                } else {
-
-                    error(
-                        "Unsupported project type: ${projectType}"
+                        "All service build/test operations completed successfully."
                     )
                 }
             }
-
-            echo(
-                "All service build/test operations completed successfully."
-            )
         }
-    }
-}
-
-
 
 
         stage('Prepare Dockerfiles') {
-    steps {
-        script {
 
-            if (!fileExists('deployflow-services.json')) {
-                error(
-                    "deployflow-services.json not found. Project analysis must run first."
-                )
-            }
+            steps {
 
-            def servicesJson =
-                readFile(
-                    'deployflow-services.json'
-                ).trim()
+                script {
 
-            def services =
-                new groovy.json.JsonSlurperClassic()
-                    .parseText(servicesJson)
+                    if (!fileExists('deployflow-services.json')) {
 
-            echo(
-                "Preparing Dockerfiles for ${services.size()} detected services."
-            )
+                        error(
+                            "deployflow-services.json not found. Project analysis must run first."
+                        )
+                    }
 
-            services.eachWithIndex { service, i ->
+                    def servicesJson =
+                        readFile(
+                            'deployflow-services.json'
+                        ).trim()
 
-                def serviceName = service.name
-                def serviceDir ="app\\${(service.path ?: '.').replace('/', '\\')}"
-                def projectType = service.type
-                def framework = service.framework ?: ''
-                def port = service.port ?: 3000
-                def isStatic = service.isStatic?.toString() ?: 'false'
-                def outputDirectory = service.outputDirectory
-                def existingDockerfile = service.existingDockerfile?.toString() ?: 'false'
+                    def services =
+                        new groovy.json.JsonSlurperClassic()
+                            .parseText(servicesJson)
 
-                echo """
+                    echo(
+                        "Preparing Dockerfiles for ${services.size()} detected services."
+                    )
+
+                    services.eachWithIndex { service, i ->
+
+                        def serviceName = service.name
+
+                        def serviceDir =
+                            "app\\${(service.path ?: '.').replace('/', '\\')}"
+
+                        def projectType = service.type
+                        def framework = service.framework ?: ''
+                        def port = service.port ?: 3000
+                        def isStatic = service.isStatic?.toString() ?: 'false'
+                        def outputDirectory = service.outputDirectory
+                        def existingDockerfile =
+                            service.existingDockerfile?.toString() ?: 'false'
+
+                        echo """
 ========================================
 Preparing Dockerfile
 Service:  ${serviceName}
@@ -671,47 +676,48 @@ Static:   ${isStatic}
 ========================================
 """
 
-                dir(serviceDir) {
+                        dir(serviceDir) {
 
-                    echo "DEBUG serviceDir = ${serviceDir}"
-                    echo "DEBUG projectType = ${projectType}"
-                    echo "DEBUG isStatic = ${isStatic}"
-                    echo "DEBUG existingDockerfile = ${existingDockerfile}"
+                            echo "DEBUG serviceDir = ${serviceDir}"
+                            echo "DEBUG projectType = ${projectType}"
+                            echo "DEBUG isStatic = ${isStatic}"
+                            echo "DEBUG existingDockerfile = ${existingDockerfile}"
 
-                    if (existingDockerfile == 'true') {
+                            if (existingDockerfile == 'true') {
 
-                        echo(
-                            "Existing Dockerfile detected for ${serviceName}. Keeping it."
-                        )
+                                echo(
+                                    "Existing Dockerfile detected for ${serviceName}. Keeping it."
+                                )
 
-                    } else if (projectType == 'node' && isStatic == 'true') {
+                            } else if (projectType == 'node' && isStatic == 'true') {
 
-                        def outputDir =
-                            outputDirectory ?: 'build'
+                                def outputDir =
+                                    outputDirectory ?: 'build'
 
-                        def safeServiceName =
-                            serviceName
-                                .toLowerCase()
-                                .replaceAll('[^a-z0-9-]+', '-')
-                                .replaceAll('^-+', '')
-                                .replaceAll('-+$', '')
+                                def safeServiceName =
+                                    serviceName
+                                        .toLowerCase()
+                                        .replaceAll('[^a-z0-9-]+', '-')
+                                        .replaceAll('^-+', '')
+                                        .replaceAll('-+$', '')
 
-                        if (!safeServiceName) {
-                            safeServiceName =
-                                "service-${i + 1}"
-                        }
+                                if (!safeServiceName) {
 
-                        def serviceAppId =
-                            "${params.APP_ID}-${safeServiceName}"
+                                    safeServiceName =
+                                        "service-${i + 1}"
+                                }
 
-                        def reactBuildCommand =
-                            framework?.toLowerCase() == 'react'
-                                ? "ENV PUBLIC_URL=/${serviceAppId}"
-                                : ""
+                                def serviceAppId =
+                                    "${params.APP_ID}-${safeServiceName}"
 
-                        writeFile(
-                            file: "Dockerfile",
-                            text: """FROM node:22-alpine AS builder
+                                def reactBuildCommand =
+                                    framework?.toLowerCase() == 'react'
+                                        ? "ENV PUBLIC_URL=/${serviceAppId}"
+                                        : ""
+
+                                writeFile(
+                                    file: "Dockerfile",
+                                    text: """FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -733,17 +739,17 @@ EXPOSE ${port}
 
 CMD ["nginx", "-g", "daemon off;"]
 """
-                        )
+                                )
 
-                        echo(
-                            "Dockerfile generated successfully for ${serviceName}."
-                        )
+                                echo(
+                                    "Dockerfile generated successfully for ${serviceName}."
+                                )
 
-                    } else if (projectType == 'node') {
+                            } else if (projectType == 'node') {
 
-                        writeFile(
-                            file: "Dockerfile",
-                            text: """FROM node:22-alpine
+                                writeFile(
+                                    file: "Dockerfile",
+                                    text: """FROM node:22-alpine
 
 WORKDIR /app
 
@@ -757,17 +763,17 @@ EXPOSE ${port}
 
 CMD ["sh", "-c", "${service.startCommand}"]
 """
-                        )
+                                )
 
-                        echo(
-                            "Dockerfile generated successfully for ${serviceName}."
-                        )
+                                echo(
+                                    "Dockerfile generated successfully for ${serviceName}."
+                                )
 
-                    } else if (projectType == 'python') {
+                            } else if (projectType == 'python') {
 
-                        writeFile(
-                            file: "Dockerfile",
-                            text: """FROM python:3.12-slim
+                                writeFile(
+                                    file: "Dockerfile",
+                                    text: """FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -781,27 +787,34 @@ EXPOSE ${port}
 
 CMD ["sh", "-c", "${service.startCommand}"]
 """
-                        )
+                                )
 
-                        echo(
-                            "Dockerfile generated successfully for ${serviceName}."
-                        )
+                                echo(
+                                    "Dockerfile generated successfully for ${serviceName}."
+                                )
+                            }
 
-                    } 
-                    if (fileExists('Dockerfile')) {
-                        echo "SUCCESS: Dockerfile exists for ${serviceName}"
-                    } else {
-                        error(
-                            "FAILURE: Dockerfile was NOT generated for ${serviceName}"
-                            )
+                            if (fileExists('Dockerfile')) {
+
+                                echo(
+                                    "SUCCESS: Dockerfile exists for ${serviceName}"
+                                )
+
+                            } else {
+
+                                error(
+                                    "FAILURE: Dockerfile was NOT generated for ${serviceName}"
+                                )
+                            }
+                        }
                     }
+
+                    echo(
+                        "All Dockerfiles prepared successfully."
+                    )
                 }
             }
-
-            echo "All Dockerfiles prepared successfully."
         }
-    }
-}
 
 
         stage('Build Docker Images') {
@@ -844,14 +857,13 @@ node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json
                                 .replaceAll('-+$', '')
 
                         if (!safeServiceName) {
+
                             safeServiceName =
                                 "service-${i + 1}"
                         }
 
                         def serviceDir =
-    servicePath
-        ? servicePath.replace('/', '\\')
-        : '.'
+                            "app\\${servicePath.replace('/', '\\')}"
 
                         def serviceAppId =
                             "${params.APP_ID}-${safeServiceName}"
@@ -864,6 +876,7 @@ node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json
  Building Docker Image
  Service: ${serviceName}
  Image:   ${dockerImage}
+ Directory: ${serviceDir}
 ========================================
 """
 
@@ -943,6 +956,7 @@ node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json
                                     .replaceAll('-+$', '')
 
                             if (!safeServiceName) {
+
                                 safeServiceName =
                                     "service-${i + 1}"
                             }
@@ -1068,6 +1082,7 @@ node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json
                                 .replaceAll('-+$', '')
 
                         if (!safeServiceName) {
+
                             safeServiceName =
                                 "service-${i + 1}"
                         }
@@ -1203,6 +1218,7 @@ node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json
                                 .replaceAll('-+$', '')
 
                         if (!safeServiceName) {
+
                             safeServiceName =
                                 "service-${i + 1}"
                         }
@@ -1267,6 +1283,7 @@ node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json
                                 .replaceAll('-+$', '')
 
                         if (!safeServiceName) {
+
                             safeServiceName =
                                 "service-${i + 1}"
                         }
@@ -1395,6 +1412,7 @@ node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json
                                 .replaceAll('-+$', '')
 
                         if (!safeServiceName) {
+
                             safeServiceName =
                                 "service-${i + 1}"
                         }
