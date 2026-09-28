@@ -786,6 +786,8 @@ RUN npm install
 
 COPY . .
 
+RUN rm -rf node_modules && npm install
+
 EXPOSE ${port}
 
 CMD ["sh", "-c", "${nodeStartCommand}"]
