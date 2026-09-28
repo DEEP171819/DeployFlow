@@ -491,10 +491,11 @@ app.get(
         try {
 
             const {
-                appsApi,
-                coreApi,
-                autoscalingApi
-            } = require("./kubernetes");
+    appsApi,
+    coreApi,
+    autoscalingApi,
+    getApplicationUrl
+} = require("./kubernetes");
 
             const namespace =
                 "default";
@@ -1840,9 +1841,13 @@ app.post(
 app.get(
     "/api/applications",
     authenticateToken,
-    (req, res) => {
+    async (req, res) => {
 
         try {
+
+            const {
+                getApplicationUrl
+            } = require("./kubernetes");
 
             const applications =
                 loadApplications();
@@ -1855,14 +1860,18 @@ app.get(
                 );
 
             const applicationsWithUrls =
-                userApplications.map(
-                    application => ({
+                await Promise.all(
+                    userApplications.map(
+                        async application => ({
 
-                        ...application,
+                            ...application,
 
-                        url:
-                            `http://${application.id}.localhost`
-                    })
+                            url:
+                                await getApplicationUrl(
+                                    application.id
+                                )
+                        })
+                    )
                 );
 
             res.json({
@@ -1887,7 +1896,7 @@ app.get(
                     "DOWN",
 
                 message:
-                    error.message
+                    "Unable to load applications"
             });
         }
     }
