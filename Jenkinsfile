@@ -673,6 +673,11 @@ Static:   ${isStatic}
 
                 dir(serviceDir) {
 
+                    echo "DEBUG serviceDir = ${serviceDir}"
+                    echo "DEBUG projectType = ${projectType}"
+                    echo "DEBUG isStatic = ${isStatic}"
+                    echo "DEBUG existingDockerfile = ${existingDockerfile}"
+
                     if (existingDockerfile == 'true') {
 
                         echo(
@@ -782,13 +787,14 @@ CMD ["sh", "-c", "${service.startCommand}"]
                             "Dockerfile generated successfully for ${serviceName}."
                         )
 
-                    } else {
-
-                        error(
-                            "Cannot generate Dockerfile for ${serviceName}. Unsupported project type: ${projectType}"
-                        )
-                    }
-                }
+                    } if (fileExists('Dockerfile')) {
+        echo "SUCCESS: Dockerfile exists for ${serviceName}"
+    } else {
+        error(
+            "FAILURE: Dockerfile was NOT generated for ${serviceName}"
+        )
+    }
+}
             }
 
             echo "All Dockerfiles prepared successfully."
