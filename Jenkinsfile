@@ -652,7 +652,7 @@ node -e "const p=require('./package.json'); console.log(p.scripts && p.scripts.b
             services.eachWithIndex { service, i ->
 
                 def serviceName = service.name
-                def serviceDir = service.path ?: '.'
+                def serviceDir ="app\\${(service.path ?: '.').replace('/', '\\')}"
                 def projectType = service.type
                 def framework = service.framework ?: ''
                 def port = service.port ?: 3000
@@ -849,7 +849,9 @@ node -e "const s=JSON.parse(require('fs').readFileSync('deployflow-services.json
                         }
 
                         def serviceDir =
-                            "app\\${servicePath.replace('/', '\\')}"
+    servicePath
+        ? servicePath.replace('/', '\\')
+        : '.'
 
                         def serviceAppId =
                             "${params.APP_ID}-${safeServiceName}"
