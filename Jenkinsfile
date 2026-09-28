@@ -787,14 +787,15 @@ CMD ["sh", "-c", "${service.startCommand}"]
                             "Dockerfile generated successfully for ${serviceName}."
                         )
 
-                    } if (fileExists('Dockerfile')) {
-        echo "SUCCESS: Dockerfile exists for ${serviceName}"
-    } else {
-        error(
-            "FAILURE: Dockerfile was NOT generated for ${serviceName}"
-        )
-    }
-}
+                    } 
+                    if (fileExists('Dockerfile')) {
+                        echo "SUCCESS: Dockerfile exists for ${serviceName}"
+                    } else {
+                        error(
+                            "FAILURE: Dockerfile was NOT generated for ${serviceName}"
+                            )
+                    }
+                }
             }
 
             echo "All Dockerfiles prepared successfully."
