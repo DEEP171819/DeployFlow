@@ -495,7 +495,7 @@ function detectNode(projectDir, packageJson) {
             ),
         isStatic: false,
         outputDirectory: null,
-        existingDockerfile: false
+        existingDockerfile: exists(projectDir, "Dockerfile")
     };
 }
 
@@ -646,13 +646,6 @@ function analyzeProject(projectDir) {
         );
     }
 
-    const docker =
-        detectDocker(projectDir);
-
-    if (docker) {
-        return docker;
-    }
-
     const packageJson =
         readJson(
             projectDir,
@@ -664,6 +657,13 @@ function analyzeProject(projectDir) {
             projectDir,
             packageJson
         );
+    }
+
+    const docker =
+        detectDocker(projectDir);
+
+    if (docker) {
+        return docker;
     }
 
     const python =
